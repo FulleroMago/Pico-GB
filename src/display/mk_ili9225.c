@@ -14,6 +14,11 @@
  */
 
 #include <assert.h>
+#include <hardware/spi.h>
+#include <hardware/timer.h>
+#include <hardware/clocks.h>
+#include <hardware/pio.h>
+#include "pico/stdlib.h"
 #include "mk_ili9225.h"
 
 /* Register Descriptions. */
@@ -244,13 +249,45 @@
 #define MK_ILI9225_REG_MTP_DATA_READ		0x82
 
 /* Useful macros. */
-#define ARRAYSIZE(array)    (sizeof(array)/sizeof(array[0]))
+#define ARRAYSIZE(array) (sizeof(array) / sizeof(array[0]))
 
 /* Structure definitions. */
-struct reg_dat_pair {
+struct reg_dat_pair
+{
 	uint16_t reg;
 	uint16_t dat;
 };
+
+/* Functions required for communication with the ILI9225. */
+void mk_ili9225_set_rst(bool state)
+{
+	gpio_put(GPIO_RST, state);
+}
+
+void mk_ili9225_set_rs(bool state)
+{
+	gpio_put(GPIO_RS, state);
+}
+
+void mk_ili9225_set_cs(bool state)
+{
+	gpio_put(GPIO_CS, state);
+}
+
+void mk_ili9225_set_led(bool state)
+{
+	gpio_put(GPIO_LED, state);
+}
+
+void mk_ili9225_spi_write16(const uint16_t *halfwords, size_t len)
+{
+	spi_write16_blocking(spi0, halfwords, len);
+}
+
+void mk_ili9225_delay_ms(unsigned ms)
+{
+	sleep_ms(ms);
+}
 
 /* Local functions. */
 static void write_register(uint16_t cmd);
@@ -313,8 +350,22 @@ unsigned mk_ili9225_read_driving_line(void)
 #endif
 
 /* Public functions. */
-unsigned mk_ili9225_init(void)
+unsigned display_init(void)
 {
+	gpio_set_function(GPIO_CS, GPIO_FUNC_SIO);
+	gpio_set_function(GPIO_CLK, GPIO_FUNC_SPI);
+	gpio_set_function(GPIO_SDA, GPIO_FUNC_SPI);
+	gpio_set_function(GPIO_RS, GPIO_FUNC_SIO);
+	gpio_set_function(GPIO_RST, GPIO_FUNC_SIO);
+	gpio_set_function(GPIO_LED, GPIO_FUNC_SIO);
+
+	gpio_set_dir(GPIO_CS, true);
+	gpio_set_dir(GPIO_RS, true);
+	gpio_set_dir(GPIO_RST, true);
+	gpio_set_dir(GPIO_LED, true);
+	gpio_set_slew_rate(GPIO_CLK, GPIO_SLEW_RATE_FAST);
+	gpio_set_slew_rate(GPIO_SDA, GPIO_SLEW_RATE_FAST);
+
 	unsigned ret = 0x9225;
 
 	/* Initialise reset pin as not reset. RST must be high before reset. */
@@ -472,6 +523,78 @@ unsigned mk_ili9225_init(void)
 	return ret;
 }
 
+void display_control(bool invert, uint8_t colour_mode)
+{
+	mk_ili9225_display_control(invert, (ili9225_color_mode_e)colour_mode);
+}
+
+void display_set_x(uint8_t x)
+{
+	set_register(MK_ILI9225_REG_RAM_ADDR_SET1, x);
+}
+
+void display_draw_line(uint_fast8_t line, const uint8_t *pixels, const palette_t palette, size_t len)
+{
+	uint16_t fb[LCD_WIDTH];
+	for (size_t x = 0; x < len; x++)
+	{
+		fb[x] = palette[(pixels[x] & LCD_PALETTE_ALL) >> 4][pixels[x] & 3];
+	}
+	display_set_x(line + 16);
+	display_write_pixels(fb, len);
+}
+
+void display_fill_rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint16_t color)
+{
+	set_register(MK_ILI9225_REG_ENTRY_MODE, 0x1018);
+	set_register(MK_ILI9225_REG_HORI_WIN_ADDR1, y + h - 1);			// y_max
+	set_register(MK_ILI9225_REG_HORI_WIN_ADDR2, y);					// y_min
+	set_register(MK_ILI9225_REG_VERT_WIN_ADDR1, 219 - x);			// x_max
+	set_register(MK_ILI9225_REG_VERT_WIN_ADDR2, 219 - (x + w - 1)); // x_min
+	set_register(MK_ILI9225_REG_RAM_ADDR_SET1, y);
+	set_register(MK_ILI9225_REG_RAM_ADDR_SET2, 219 - x);
+	write_register(MK_ILI9225_REG_GRAM_RW);
+	mk_ili9225_set_rs(1);
+	mk_ili9225_set_cs(0);
+	for (uint16_t i = 0; i < w * h; i++)
+	{
+		mk_ili9225_spi_write16(&color, 1);
+	}
+	mk_ili9225_set_cs(1);
+}
+
+void display_fill(uint16_t color)
+{
+	display_fill_rect(0, 0, 220, 176, color);
+}
+
+void display_text(char *s, uint8_t x, uint8_t y, uint16_t color, uint16_t bgcolor)
+{
+	uint16_t fbuf[8 * 8];
+	for (uint8_t i = 0; i < strlen(s); i++)
+	{
+		mk_ili9225_get_letter(fbuf, s[i], color, bgcolor);
+		mk_ili9225_blit(fbuf, x, y, 8, 8);
+		x += 8;
+		if (x > 27 * 8)
+		{
+			break;
+		}
+	}
+}
+
+void display_write_pixels(const uint16_t *pixels, uint_fast16_t nmemb)
+{
+	assert(pixels != NULL);
+	assert(nmemb > 0);
+
+	write_register(MK_ILI9225_REG_GRAM_RW);
+	mk_ili9225_set_rs(1);
+	mk_ili9225_set_cs(0);
+	mk_ili9225_spi_write16(pixels, nmemb);
+	mk_ili9225_set_cs(1);
+}
+
 void mk_ili9225_display_control(bool invert, ili9225_color_mode_e colour_mode)
 {
 	uint16_t dat = 0x0013;
@@ -480,8 +603,7 @@ void mk_ili9225_display_control(bool invert, ili9225_color_mode_e colour_mode)
 	set_register(MK_ILI9225_REG_DISPLAY_CTRL, dat);
 }
 
-void mk_ili9225_set_window(uint16_t hor_start, uint16_t hor_end,
-	uint16_t vert_start, uint16_t vert_end)
+void mk_ili9225_set_window(uint16_t hor_start, uint16_t hor_end, uint16_t vert_start, uint16_t vert_end)
 {
 	assert(hor_start < hor_end);
 	assert(hor_end < SCREEN_SIZE_X);
@@ -496,27 +618,10 @@ void mk_ili9225_set_window(uint16_t hor_start, uint16_t hor_end,
 	set_register(MK_ILI9225_REG_RAM_ADDR_SET2, vert_start);
 }
 
-void mk_ili9225_set_x(uint8_t x)
-{
-	set_register(MK_ILI9225_REG_RAM_ADDR_SET1, x);
-}
-
 void mk_ili9225_set_address(uint8_t x, uint8_t y)
 {
 	set_register(MK_ILI9225_REG_RAM_ADDR_SET1, x);
 	set_register(MK_ILI9225_REG_RAM_ADDR_SET2, y);
-}
-
-void mk_ili9225_write_pixels(const uint16_t *pixels, uint_fast16_t nmemb)
-{
-	assert(pixels != NULL);
-	assert(nmemb > 0);
-
-	write_register(MK_ILI9225_REG_GRAM_RW);
-	mk_ili9225_set_rs(1);
-	mk_ili9225_set_cs(0);
-	mk_ili9225_spi_write16(pixels, nmemb);
-	mk_ili9225_set_cs(1);
 }
 
 void mk_ili9225_write_pixels_start(void)
@@ -557,29 +662,6 @@ void mk_ili9225_set_drive_freq(uint16_t f)
 
 void mk_ili9225_exit(void)
 {
-}
-
-void mk_ili9225_fill_rect(uint8_t x,uint8_t y,uint8_t w,uint8_t h,uint16_t color)
-{
-	set_register(MK_ILI9225_REG_ENTRY_MODE,0x1018);
-	set_register(MK_ILI9225_REG_HORI_WIN_ADDR1, y+h-1);			// y_max
-	set_register(MK_ILI9225_REG_HORI_WIN_ADDR2, y);				// y_min
-	set_register(MK_ILI9225_REG_VERT_WIN_ADDR1, 219-x);			// x_max
-	set_register(MK_ILI9225_REG_VERT_WIN_ADDR2, 219-(x+w-1));	// x_min
-	set_register(MK_ILI9225_REG_RAM_ADDR_SET1,y);
-	set_register(MK_ILI9225_REG_RAM_ADDR_SET2,219-x);
-	write_register(MK_ILI9225_REG_GRAM_RW);
-	mk_ili9225_set_rs(1);
-	mk_ili9225_set_cs(0);
-	for(uint16_t i=0;i<w*h;i++) {
-		mk_ili9225_spi_write16(&color,1);
-	}
-	mk_ili9225_set_cs(1);
-}
-
-void mk_ili9225_fill(uint16_t color)
-{
-	mk_ili9225_fill_rect(0,0,220,176,color);
 }
 
 void mk_ili9225_pixel(uint8_t x,uint8_t y,uint16_t color)
@@ -1280,18 +1362,6 @@ void mk_ili9225_get_letter(uint16_t *fbuf,char l,uint16_t color,uint16_t bgcolor
 				fbuf[y*8+x]=bgcolor;
 			}
 			row=row<<1;
-		}
-	}
-}
-
-void mk_ili9225_text(char *s,uint8_t x,uint8_t y,uint16_t color,uint16_t bgcolor) {
-	uint16_t fbuf[8*8];
-	for(uint8_t i=0;i<strlen(s);i++) {
-		mk_ili9225_get_letter(fbuf,s[i],color,bgcolor);
-		mk_ili9225_blit(fbuf,x,y,8,8);
-		x+=8;
-		if(x>27*8) {
-			break;
 		}
 	}
 }

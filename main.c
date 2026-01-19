@@ -13,28 +13,6 @@
  * PERFORMANCE OF THIS SOFTWARE.
  */
 
-// Peanut-GB emulator settings
-#define ENABLE_LCD	1
-#define ENABLE_SOUND	1
-#define ENABLE_SDCARD	1
-#define PEANUT_GB_HIGH_LCD_ACCURACY 1
-#define PEANUT_GB_USE_BIOS 0
-
-/* Use DMA for all drawing to LCD. Benefits aren't fully realised at the moment
- * due to busy loops waiting for DMA completion. */
-#define USE_DMA		0
-
-/**
- * Reducing VSYNC calculation to lower multiple.
- * When setting a clock IRQ to DMG_CLOCK_FREQ_REDUCED, count to
- * SCREEN_REFRESH_CYCLES_REDUCED to obtain the time required each VSYNC.
- * DMG_CLOCK_FREQ_REDUCED = 2^18, and SCREEN_REFRESH_CYCLES_REDUCED = 4389.
- * Currently unused.
- */
-#define VSYNC_REDUCTION_FACTOR 16u
-#define SCREEN_REFRESH_CYCLES_REDUCED (SCREEN_REFRESH_CYCLES/VSYNC_REDUCTION_FACTOR)
-#define DMG_CLOCK_FREQ_REDUCED (DMG_CLOCK_FREQ/VSYNC_REDUCTION_FACTOR)
-
 /* C Headers */
 #include <stdio.h>
 #include <stdlib.h>
@@ -57,29 +35,15 @@
 #include <hardware/irq.h>
 
 /* Project headers */
+#include "config.h"
 #include "hedley.h"
 #include "minigb_apu.h"
 #include "peanut_gb.h"
-#include "mk_ili9225.h"
+#include "display.h"
+// #include "mk_ili9225.h"
 #include "sdcard.h"
 #include "i2s.h"
 #include "gbcolors.h"
-
-/* GPIO Connections. */
-#define GPIO_UP		2
-#define GPIO_DOWN	3
-#define GPIO_LEFT	4
-#define GPIO_RIGHT	5
-#define GPIO_A		6
-#define GPIO_B		7
-#define GPIO_SELECT	8
-#define GPIO_START	9
-#define GPIO_CS		17
-#define GPIO_CLK	18
-#define GPIO_SDA	19
-#define GPIO_RS		20
-#define GPIO_RST	21
-#define GPIO_LED	22
 
 #if ENABLE_SOUND
 /**
@@ -142,37 +106,6 @@ static uint8_t pixels_buffer[LCD_WIDTH];
 
 #define putstdio(x) write(1, x, strlen(x))
 
-/* Functions required for communication with the ILI9225. */
-void mk_ili9225_set_rst(bool state)
-{
-	gpio_put(GPIO_RST, state);
-}
-
-void mk_ili9225_set_rs(bool state)
-{
-	gpio_put(GPIO_RS, state);
-}
-
-void mk_ili9225_set_cs(bool state)
-{
-	gpio_put(GPIO_CS, state);
-}
-
-void mk_ili9225_set_led(bool state)
-{
-	gpio_put(GPIO_LED, state);
-}
-
-void mk_ili9225_spi_write16(const uint16_t *halfwords, size_t len)
-{
-	spi_write16_blocking(spi0, halfwords, len);
-}
-
-void mk_ili9225_delay_ms(unsigned ms)
-{
-	sleep_ms(ms);
-}
-
 /**
  * Returns a byte from the ROM file at the given address.
  */
@@ -231,8 +164,8 @@ void core1_lcd_draw_line(const uint_fast8_t line)
 				[pixels_buffer[x] & 3];
 	}
 
-	mk_ili9225_set_x(line + 16);
-	mk_ili9225_write_pixels(fb, LCD_WIDTH);
+	display_set_x(line + 16);
+	display_write_pixels(fb, LCD_WIDTH);
 	__atomic_store_n(&lcd_line_busy, 0, __ATOMIC_SEQ_CST);
 }
 
@@ -242,13 +175,13 @@ void main_core1(void)
 	union core_cmd cmd;
 
 	/* Initialise and control LCD on core 1. */
-	mk_ili9225_init();
+	display_init();
 
 	/* Clear LCD screen. */
-	mk_ili9225_fill(0x0000);
+	display_fill(0x0000);
 
 	/* Set LCD window to DMG size. */
-	mk_ili9225_fill_rect(31,16,LCD_WIDTH,LCD_HEIGHT,0x0000);
+	display_fill_rect(31,16,LCD_WIDTH,LCD_HEIGHT,0x0000);
 
 	// Sleep used for debugging LCD window.
 	//sleep_ms(1000);
@@ -264,7 +197,8 @@ void main_core1(void)
 			break;
 
 		case CORE_CMD_IDLE_SET:
-			mk_ili9225_display_control(true, cmd.data);
+			display_idle(true);
+			// display_control(true, cmd.data);
 			break;
 
 		case CORE_CMD_NOP:
@@ -467,10 +401,10 @@ uint16_t rom_file_selector_display_page(char filename[22][256],uint16_t num_page
 	f_unmount(pSD->pcName);
 
 	/* display *.gb rom files on screen */
-	mk_ili9225_fill(0x0000);
+	display_fill(0x0000);
 	for(uint8_t ifile=0;ifile<num_file;ifile++) {
-		mk_ili9225_text(filename[ifile],0,ifile*8,0xFFFF,0x0000);
-    }
+		display_text(filename[ifile], 0, ifile * 8, 0xFFFF, 0x0000);
+	}
 	return num_file;
 }
 
@@ -489,7 +423,7 @@ void rom_file_selector() {
 
 	/* select the first rom */
 	uint8_t selected=0;
-	mk_ili9225_text(filename[selected],0,selected*8,0xFFFF,0xF800);
+	display_text(filename[selected],0,selected*8,0xFFFF,0xF800);
 
 	/* get user's input */
 	bool up,down,left,right,a,b,select,start;
@@ -513,21 +447,21 @@ void rom_file_selector() {
 		}
 		if(!down) {
 			/* select the next rom */
-			mk_ili9225_text(filename[selected],0,selected*8,0xFFFF,0x0000);
+			display_text(filename[selected],0,selected*8,0xFFFF,0x0000);
 			selected++;
 			if(selected>=num_file) selected=0;
-			mk_ili9225_text(filename[selected],0,selected*8,0xFFFF,0xF800);
+			display_text(filename[selected],0,selected*8,0xFFFF,0xF800);
 			sleep_ms(150);
 		}
 		if(!up) {
 			/* select the previous rom */
-			mk_ili9225_text(filename[selected],0,selected*8,0xFFFF,0x0000);
+			display_text(filename[selected],0,selected*8,0xFFFF,0x0000);
 			if(selected==0) {
 				selected=num_file-1;
 			} else {
 				selected--;
 			}
-			mk_ili9225_text(filename[selected],0,selected*8,0xFFFF,0xF800);
+			display_text(filename[selected],0,selected*8,0xFFFF,0xF800);
 			sleep_ms(150);
 		}
 		if(!right) {
@@ -541,7 +475,7 @@ void rom_file_selector() {
 			}
 			/* select the first file */
 			selected=0;
-			mk_ili9225_text(filename[selected],0,selected*8,0xFFFF,0xF800);
+			display_text(filename[selected],0,selected*8,0xFFFF,0xF800);
 			sleep_ms(150);
 		}
 		if((!left) && num_page>0) {
@@ -550,7 +484,7 @@ void rom_file_selector() {
 			num_file=rom_file_selector_display_page(filename,num_page);
 			/* select the first file */
 			selected=0;
-			mk_ili9225_text(filename[selected],0,selected*8,0xFFFF,0xF800);
+			display_text(filename[selected],0,selected*8,0xFFFF,0xF800);
 			sleep_ms(150);
 		}
 		tight_loop_contents();
@@ -590,12 +524,6 @@ int main(void)
 	gpio_set_function(GPIO_B, GPIO_FUNC_SIO);
 	gpio_set_function(GPIO_SELECT, GPIO_FUNC_SIO);
 	gpio_set_function(GPIO_START, GPIO_FUNC_SIO);
-	gpio_set_function(GPIO_CS, GPIO_FUNC_SIO);
-	gpio_set_function(GPIO_CLK, GPIO_FUNC_SPI);
-	gpio_set_function(GPIO_SDA, GPIO_FUNC_SPI);
-	gpio_set_function(GPIO_RS, GPIO_FUNC_SIO);
-	gpio_set_function(GPIO_RST, GPIO_FUNC_SIO);
-	gpio_set_function(GPIO_LED, GPIO_FUNC_SIO);
 
 	gpio_set_dir(GPIO_UP, false);
 	gpio_set_dir(GPIO_DOWN, false);
@@ -605,12 +533,6 @@ int main(void)
 	gpio_set_dir(GPIO_B, false);
 	gpio_set_dir(GPIO_SELECT, false);
 	gpio_set_dir(GPIO_START, false);
-	gpio_set_dir(GPIO_CS, true);
-	gpio_set_dir(GPIO_RS, true);
-	gpio_set_dir(GPIO_RST, true);
-	gpio_set_dir(GPIO_LED, true);
-	gpio_set_slew_rate(GPIO_CLK, GPIO_SLEW_RATE_FAST);
-	gpio_set_slew_rate(GPIO_SDA, GPIO_SLEW_RATE_FAST);
 	
 	gpio_pull_up(GPIO_UP);
 	gpio_pull_up(GPIO_DOWN);
@@ -647,8 +569,8 @@ while(true)
 #if ENABLE_LCD
 #if ENABLE_SDCARD
 	/* ROM File selector */
-	mk_ili9225_init();
-	mk_ili9225_fill(0x0000);
+	display_init();
+	display_fill(0x0000);
 	rom_file_selector();
 #endif
 #endif
@@ -796,17 +718,18 @@ while(true)
 			printf("Freq %u\n", freq);
 			break;
 #endif
-		case 'c':
-		{
-			static ili9225_color_mode_e mode = ILI9225_COLOR_MODE_FULL;
-			union core_cmd cmd;
+		// TODO:
+		// case 'c':
+		// {
+		// 	static ili9225_color_mode_e mode = ILI9225_COLOR_MODE_FULL;
+		// 	union core_cmd cmd;
 
-			mode = !mode;
-			cmd.cmd = CORE_CMD_IDLE_SET;
-			cmd.data = mode;
-			multicore_fifo_push_blocking(cmd.full);
-			break;
-		}
+		// 	mode = !mode;
+		// 	cmd.cmd = CORE_CMD_IDLE_SET;
+		// 	cmd.data = mode;
+		// 	multicore_fifo_push_blocking(cmd.full);
+		// 	break;
+		// }
 
 		case 'i':
 			gb.direct.interlace = !gb.direct.interlace;

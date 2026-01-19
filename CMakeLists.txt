@@ -4,13 +4,16 @@ if(WIN32)
 else()
     set(USERHOME $ENV{HOME})
 endif()
+
 set(sdkVersion 2.2.0)
 set(toolchainVersion 14_2_Rel1)
 set(picotoolVersion 2.2.0-a4)
 set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
-if (EXISTS ${picoVscode})
+
+if(EXISTS ${picoVscode})
     include(${picoVscode})
 endif()
+
 # ====================================================================================
 set(PICO_BOARD pico CACHE STRING "Board type")
 
@@ -26,42 +29,59 @@ pico_sdk_init()
 
 add_subdirectory(ext/FatFs_SPI build)
 
+# Nastavení proměnné s výchozí hodnotou
+set(ILI_MODEL "9225") # Vyber display model - hodnoty: "9225" nebo "9341"
+
+# option(ILI_MODEL " Select ILI display model(9225 or 9341) " "9225")
+
+# Podle proměnné vyber správný zdrojový soubor
+if(ILI_MODEL STREQUAL "9225")
+    set(ILI_SRC src/display/mk_ili9225.c)
+elseif(ILI_MODEL STREQUAL "9341")
+    set(ILI_SRC src/display/mk_ili9341.c)
+else()
+    message(FATAL_ERROR " Unknown ILI_MODEL: ${ILI_MODEL} ")
+endif()
+
+# set(ILI_SRC src/mk_ili9225.c)
 add_executable(RP2040_GB
-        src/main.c
-        src/mk_ili9225.c
-        ext/minigb_apu/minigb_apu.c
-        ext/i2s/i2s.c
+    main.c
+    ${ILI_SRC}
+    ext/minigb_apu/minigb_apu.c
+    ext/i2s/i2s.c
 )
 
 pico_generate_pio_header(RP2040_GB ${CMAKE_CURRENT_LIST_DIR}/ext/i2s/audio_i2s.pio)
 
-target_include_directories(RP2040_GB PRIVATE inc ext/minigb_apu ext/i2s)
+target_include_directories(RP2040_GB PRIVATE include ext/minigb_apu ext/i2s)
 
 target_link_libraries(RP2040_GB
-        FatFs_SPI
-        pico_stdlib pico_stdio pico_bootrom pico_multicore pico_stdio  pico_multicore
-        hardware_clocks hardware_pio hardware_vreg hardware_pio
-        hardware_sync hardware_pll hardware_spi hardware_irq hardware_dma
-        pico_binary_info)
+    FatFs_SPI
+    pico_stdlib pico_stdio pico_bootrom pico_multicore pico_stdio pico_multicore
+    hardware_clocks hardware_pio hardware_vreg hardware_pio
+    hardware_sync hardware_pll hardware_spi hardware_irq hardware_dma
+    pico_binary_info)
+
 target_compile_definitions(RP2040_GB PRIVATE
-        PARAM_ASSERTIONS_DISABLE_ALL=1
-        PICO_ENTER_USB_BOOT_ON_EXIT=1
-        PICO_STDIO_ENABLE_CRLF_SUPPORT=0
-        PICO_STDIO_DEFAULT_CRLF=0
-        PICO_PRINTF_SUPPORT_FLOAT=0
-        PICO_PRINTF_SUPPORT_EXPONENTIAL=0
-        PICO_PRINTF_SUPPORT_LONG_LONG=1
-        PICO_PRINTF_SUPPORT_PTRDIFF_T=0)
+    PARAM_ASSERTIONS_DISABLE_ALL=1
+    PICO_ENTER_USB_BOOT_ON_EXIT=1
+    PICO_STDIO_ENABLE_CRLF_SUPPORT=0
+    PICO_STDIO_DEFAULT_CRLF=0
+    PICO_PRINTF_SUPPORT_FLOAT=0
+    PICO_PRINTF_SUPPORT_EXPONENTIAL=0
+    PICO_PRINTF_SUPPORT_LONG_LONG=1
+    PICO_PRINTF_SUPPORT_PTRDIFF_T=0)
 
 function(pico_add_verbose_dis_output TARGET)
-	add_custom_command(TARGET ${TARGET} POST_BUILD
-		COMMAND ${CMAKE_OBJDUMP} -h $<TARGET_FILE:${TARGET}> >$<IF:$<BOOL:$<TARGET_PROPERTY:${TARGET},OUTPUT_NAME>>,$<TARGET_PROPERTY:${TARGET},OUTPUT_NAME>,$<TARGET_PROPERTY:${TARGET},NAME>>.dis
-		COMMAND ${CMAKE_OBJDUMP} -drwCSl $<TARGET_FILE:${TARGET}> >>$<IF:$<BOOL:$<TARGET_PROPERTY:${TARGET},OUTPUT_NAME>>,$<TARGET_PROPERTY:${TARGET},OUTPUT_NAME>,$<TARGET_PROPERTY:${TARGET},NAME>>.dis
-		)
+    add_custom_command(TARGET ${TARGET} POST_BUILD
+        COMMAND ${CMAKE_OBJDUMP} -h $<TARGET_FILE:${TARGET}> >$<IF:$<BOOL:$<TARGET_PROPERTY:${TARGET},OUTPUT_NAME>>,$<TARGET_PROPERTY:${TARGET},OUTPUT_NAME>,$<TARGET_PROPERTY:${TARGET},NAME>>.dis
+        COMMAND ${CMAKE_OBJDUMP} -drwCSl $<TARGET_FILE:${TARGET}> >>$<IF:$<BOOL:$<TARGET_PROPERTY:${TARGET},OUTPUT_NAME>>,$<TARGET_PROPERTY:${TARGET},OUTPUT_NAME>,$<TARGET_PROPERTY:${TARGET},NAME>>.dis
+    )
 endfunction()
 
 pico_set_binary_type(RP2040_GB copy_to_ram)
-#pico_set_binary_type(RP2040_GB no_flash)
+
+# pico_set_binary_type(RP2040_GB no_flash)
 pico_enable_stdio_usb(RP2040_GB 1)
 pico_enable_stdio_uart(RP2040_GB 0)
 pico_add_verbose_dis_output(RP2040_GB)

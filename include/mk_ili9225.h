@@ -15,6 +15,18 @@
 
 #pragma once
 
+#define GPIO_CS 17
+#define GPIO_CLK 18
+#define GPIO_SDA 19
+#define GPIO_RS 20
+#define GPIO_RST 21
+#define GPIO_LED 22
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 //#define NDEBUG
 #ifndef MK_ILI9225_READ_AVAILABLE
 # define MK_ILI9225_READ_AVAILABLE 0
@@ -173,3 +185,20 @@ void mk_ili9225_get_letter(uint16_t *fbuf,char letter,uint16_t color,uint16_t bg
  * All characters have dimensions of 8x8 pixels.
  */
 void mk_ili9225_text(char *s,uint8_t x,uint8_t y,uint16_t color,uint16_t bgcolor);
+
+/* Functions required for communication with the ILI9225. */
+void mk_ili9225_set_rst(bool state);
+
+void mk_ili9225_set_rs(bool state);
+
+void mk_ili9225_set_cs(bool state);
+
+void mk_ili9225_set_led(bool state);
+
+void mk_ili9225_spi_write16(const uint16_t *halfwords, size_t len);
+
+void mk_ili9225_delay_ms(unsigned ms);
+
+#ifdef __cplusplus
+}
+#endif

@@ -188,6 +188,7 @@
 #define LCD_VERT_LINES      154
 #define LCD_WIDTH           160
 #define LCD_HEIGHT          144
+
 /* PPU cycles through modes every 456 cycles. */
 #define LCD_LINE_CYCLES     456
 #define LCD_MODE0_HBLANK_MAX_DRUATION	204
