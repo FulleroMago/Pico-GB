@@ -45,7 +45,7 @@ endif()
 
 # set(ILI_SRC src/mk_ili9225.c)
 add_executable(RP2040_GB
-    main.c
+    src/main.c
     ${ILI_SRC}
     ext/minigb_apu/minigb_apu.c
     ext/i2s/i2s.c
