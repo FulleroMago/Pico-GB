@@ -1,0 +1,14 @@
+// Buttons - GPIO Connections.
+#define GPIO_CONTROL_RIGHT 2
+#define GPIO_CONTROL_LEFT 3
+#define GPIO_CONTROL_UP 4
+#define GPIO_CONTROL_DOWN 5
+
+#define GPIO_CONTROL_B 6
+#define GPIO_CONTROL_A 7
+#define GPIO_CONTROL_Y 8
+#define GPIO_CONTROL_X 9
+
+#define GPIO_CONTROL_SELECT 27
+#define GPIO_CONTROL_START 26
+#define GPIO_CONTROL_MENU 28

@@ -515,33 +515,8 @@ int main(void)
 	// sleep_ms(5000);
 	putstdio("INIT: ");
 
-	/* Initialise GPIO pins. */
-	gpio_set_function(GPIO_UP, GPIO_FUNC_SIO);
-	gpio_set_function(GPIO_DOWN, GPIO_FUNC_SIO);
-	gpio_set_function(GPIO_LEFT, GPIO_FUNC_SIO);
-	gpio_set_function(GPIO_RIGHT, GPIO_FUNC_SIO);
-	gpio_set_function(GPIO_A, GPIO_FUNC_SIO);
-	gpio_set_function(GPIO_B, GPIO_FUNC_SIO);
-	gpio_set_function(GPIO_SELECT, GPIO_FUNC_SIO);
-	gpio_set_function(GPIO_START, GPIO_FUNC_SIO);
-
-	gpio_set_dir(GPIO_UP, false);
-	gpio_set_dir(GPIO_DOWN, false);
-	gpio_set_dir(GPIO_LEFT, false);
-	gpio_set_dir(GPIO_RIGHT, false);
-	gpio_set_dir(GPIO_A, false);
-	gpio_set_dir(GPIO_B, false);
-	gpio_set_dir(GPIO_SELECT, false);
-	gpio_set_dir(GPIO_START, false);
-	
-	gpio_pull_up(GPIO_UP);
-	gpio_pull_up(GPIO_DOWN);
-	gpio_pull_up(GPIO_LEFT);
-	gpio_pull_up(GPIO_RIGHT);
-	gpio_pull_up(GPIO_A);
-	gpio_pull_up(GPIO_B);
-	gpio_pull_up(GPIO_SELECT);
-	gpio_pull_up(GPIO_START);
+	// Initialize button controls
+	controls_init();
 
 	/* Set SPI clock to use high frequency. */
 	clock_configure(clk_peri, 0,
@@ -589,7 +564,7 @@ while(true)
 
 	/* Automatically assign a colour palette to the game */
 	char rom_title[16];
-	auto_assign_palette(palette, gb_colour_hash(&gb),gb_get_rom_name(&gb,rom_title));
+	auto_assign_palette(palette, gb_colour_hash(&gb), gb_get_rom_name(&gb,rom_title));
 	
 #if ENABLE_LCD
 	gb_init_lcd(&gb, &lcd_draw_line);
@@ -819,7 +794,6 @@ out:
 	puts("\nEmulation Ended");
 	/* stop lcd task running on core 1 */
 	multicore_reset_core1(); 
-
 }
 
 }

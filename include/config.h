@@ -1,15 +1,5 @@
 #pragma once
 
-/* Buttons - GPIO Connections. */
-#define GPIO_UP 2
-#define GPIO_DOWN 3
-#define GPIO_LEFT 4
-#define GPIO_RIGHT 5
-#define GPIO_A 6
-#define GPIO_B 7
-#define GPIO_SELECT 8
-#define GPIO_START 9
-
 // Peanut-GB emulator settings
 #define ENABLE_LCD 1
 #define ENABLE_SOUND 1
