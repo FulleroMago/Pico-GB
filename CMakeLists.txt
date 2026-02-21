@@ -27,8 +27,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 pico_sdk_init()
 
-add_subdirectory(morana build)
-add_subdirectory(ext/FatFs_SPI build)
+add_subdirectory(morana)
 
 # # Nastavení proměnné s výchozí hodnotou
 # set(ILI_MODEL "9225") # Vyber display model - hodnoty: "9225" nebo "9341"
@@ -37,27 +36,27 @@ add_subdirectory(ext/FatFs_SPI build)
 
 # # Podle proměnné vyber správný zdrojový soubor
 # if(ILI_MODEL STREQUAL "9225")
-#     set(ILI_SRC src/display/mk_ili9225.c)
+# set(ILI_SRC src/display/mk_ili9225.c)
 # elseif(ILI_MODEL STREQUAL "9341")
-#     set(ILI_SRC src/display/mk_ili9341.c)
+# set(ILI_SRC src/display/mk_ili9341.c)
 # else()
-#     message(FATAL_ERROR " Unknown ILI_MODEL: ${ILI_MODEL} ")
+# message(FATAL_ERROR " Unknown ILI_MODEL: ${ILI_MODEL} ")
 # endif()
 
 # set(ILI_SRC src/mk_ili9225.c)
 add_executable(RP2040_GB
     src/main.c
+
     # ${ILI_SRC}
-    ext/minigb_apu/minigb_apu.c
-    ext/i2s/i2s.c
+    # ext/minigb_apu/minigb_apu.c
+    # ext/i2s/i2s.c
 )
 
-pico_generate_pio_header(RP2040_GB ${CMAKE_CURRENT_LIST_DIR}/ext/i2s/audio_i2s.pio)
+pico_generate_pio_header(RP2040_GB)
 
 target_include_directories(RP2040_GB PRIVATE include ext/minigb_apu ext/i2s)
 
 target_link_libraries(RP2040_GB
-    FatFs_SPI
     morana
     pico_stdlib pico_stdio pico_bootrom pico_multicore pico_stdio pico_multicore
     hardware_clocks hardware_pio hardware_vreg hardware_pio

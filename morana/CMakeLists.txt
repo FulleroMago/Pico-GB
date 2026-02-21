@@ -1,22 +1,25 @@
-add_library(morana INTERFACE)
-
-set(LCD_ILI9225 ON)
-
-target_sources(morana INTERFACE
-    ${CMAKE_CURRENT_LIST_DIR}/input/buttons.c
-    $<$<BOOL:${LCD_ILI9225}>:${CMAKE_CURRENT_LIST_DIR}/display/ili9225.c>
-    $<$<BOOL:${LCD_ILI9341}>:${CMAKE_CURRENT_LIST_DIR}/display/ili9341.c>
+add_library(morana
+    morana.c
+    display.c
+    sd_hw_config.c
+    sd_card.c
+    controls.c
 )
 
-target_include_directories(morana INTERFACE
-    input
-    display
-    include
+target_include_directories(morana PUBLIC
+    .
 )
 
-target_link_libraries(morana INTERFACE
-        hardware_spi
-        hardware_dma
-        hardware_rtc
-        pico_stdlib
+# # Add any user requested libraries
+target_link_libraries(morana
+    ili9341
+    gfx
+    FatFs_SPI
+
+    # no-OS-FatFS-SD-SDIO-SPI-RPi-Pico
 )
+
+add_subdirectory(libs/display/ili9341)
+add_subdirectory(libs/display/gfx)
+add_subdirectory(libs/storage/FatFs_SPI build)
+# add_subdirectory(libs/storage/SD build)
