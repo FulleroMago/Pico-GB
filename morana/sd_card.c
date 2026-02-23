@@ -271,6 +271,57 @@ int sd_list_directory_pattern(const char *dirname, const char *pattern, sd_entry
     return count;
 }
 
+bool sd_read_file_sequential(const char *filename, uint32_t block_size, sd_read_block_cb cb, void *user_data)
+{
+    FIL fil;
+    FRESULT fr = f_open(&fil, filename, FA_OPEN_EXISTING | FA_READ);
+    if (FR_OK != fr)
+    {
+        printf("f_open error: (%d)\n", fr);
+        return false;
+    }
+
+    // void *buffer = malloc(block_size);
+    // if (!buffer)
+    // {
+    //     printf("malloc error\n");
+    //     f_close(&fil);
+    //     return false;
+    // }
+
+    // UINT bytes_read;
+    bool result = true;
+
+    // while (1)
+    // {
+    //     fr = f_read(&fil, buffer, block_size, &bytes_read);
+    //     if (fr != FR_OK)
+    //     {
+    //         printf("E f_read error: %s (%d)\n", FRESULT_str(fr), fr);
+    //         result = false;
+    //         break;
+    //     }
+    //     if (bytes_read == 0)
+    //         break; // EOF
+
+    //     cb(buffer, bytes_read, user_data);
+
+    //     if (bytes_read < block_size)
+    //         break; // poslední blok
+    // }
+
+    // free(buffer);
+
+    // fr = f_close(&fil);
+    // if (FR_OK != fr)
+    // {
+    //     printf("f_close error: (%d)\n", fr);
+    //     result = false;
+    // }
+
+    return result;
+}
+
 // bool sd_find_file(const char *dirname, const char *pattern, sd_entry_t *entry)
 // {
 //     DIR dir;

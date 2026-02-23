@@ -7,12 +7,15 @@
 // Struktura pro položku adresáře
 typedef struct
 {
-    char name[64];
+    char name[256];
     uint8_t is_dir;
 } sd_entry_t;
 
 // Callback typ pro iteraci adresářem
 typedef void (*sd_entry_cb)(const FILINFO *fno, void *user_data);
+
+// Callback typ pro čtení souboru po blocích
+typedef void (*sd_read_block_cb)(const void *block, uint32_t block_size, void *user_data);
 
 // Inicializace SD karty
 bool sd_card_init(void);
@@ -22,6 +25,9 @@ int32_t sd_get_file_size(const char *filename);
 
 // Čtení souboru do bufferu
 bool sd_read_file(const char *filename, void *buffer, uint32_t buffer_size);
+
+// Čtení souboru po blocích s callbackem
+bool sd_read_file_sequential(const char *filename, uint32_t block_size, sd_read_block_cb cb, void *user_data);
 
 // Zápis dat do souboru (append)
 bool sd_write_file(const char *filename, const void *data, uint32_t data_size);

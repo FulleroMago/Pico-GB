@@ -61,12 +61,31 @@ void display_text_write_line(const char *str)
     line++;
 }
 
+void display_text_write_line_len(const char *str, size_t len)
+{
+    GFX_setCursor(text_box_x, text_box_y + line * line_height);
+
+    GFX_printf("%.*s", (int)len, str);
+
+    line++;
+}
+
 void display_text_write_line_color(const char *str, uint16_t color, uint16_t bgcolor)
 {
     GFX_setCursor(text_box_x, text_box_y + line * line_height);
     GFX_setTextColor(color);
     GFX_setTextBack(bgcolor);
     GFX_printf(str);
+
+    line++;
+}
+
+void display_text_write_line_color_len(const char *str, size_t len, uint16_t color, uint16_t bgcolor)
+{
+    GFX_setCursor(text_box_x, text_box_y + line * line_height);
+    GFX_setTextColor(color);
+    GFX_setTextBack(bgcolor);
+    GFX_printf("%.*s", (int)len, str);
 
     line++;
 }

@@ -58,12 +58,12 @@
 #include "morana.h"
 
 /* Project headers */
-#include "hedley.h"
+// #include "hedley.h"
 // #include "minigb_apu.h"
 #include "peanut_gb.h"
 // #include "mk_ili9225.h"
 // #include "i2s.h"
-#include "gbcolors.h"
+// #include "gbcolors.h"
 #include "config.h"
 
 // /** Definition of ROM data
@@ -71,8 +71,8 @@
 //  * Once done, we can access this at XIP_BASE + 1Mb.
 //  * Game Boy DMG ROM size ranges from 32768 bytes (e.g. Tetris) to 1,048,576 bytes (e.g. Pokemod Red)
 //  */
-// #define FLASH_TARGET_OFFSET (1024 * 1024)
-// const uint8_t *rom = (const uint8_t *) (XIP_BASE + FLASH_TARGET_OFFSET);
+#define FLASH_TARGET_OFFSET (1024 * 1024)
+// const uint8_t *rom = (const uint8_t *)(XIP_BASE + FLASH_TARGET_OFFSET);
 // static unsigned char rom_bank0[65536];
 
 // static uint8_t ram[32768];
@@ -331,60 +331,66 @@
 // 	printf("I write_cart_ram_file(%s) COMPLETE (%lu bytes)\n",filename,save_size);
 // }
 
-// /**
-//  * Load a .gb rom file in flash from the SD card
-//  */
-// void load_cart_rom_file(char *filename) {
-// 	UINT br;
-// 	uint8_t buffer[FLASH_SECTOR_SIZE];
-// 	bool mismatch=false;
-// 	sd_card_t *pSD=sd_get_by_num(0);
-// 	FRESULT fr=f_mount(&pSD->fatfs,pSD->pcName,1);
-// 	if (FR_OK!=fr) {
-// 		printf("E f_mount error: %s (%d)\n",FRESULT_str(fr),fr);
-// 		return;
-// 	}
-// 	FIL fil;
-// 	fr=f_open(&fil,filename,FA_READ);
-// 	if (fr==FR_OK) {
-// 		uint32_t flash_target_offset=FLASH_TARGET_OFFSET;
-// 		for(;;) {
-// 			f_read(&fil,buffer,sizeof buffer,&br);
-// 			if(br==0) break; /* end of file */
+typedef struct
+{
+	uint32_t flash_target_offset;
+	bool mismatch;
+} flash_write_state_t;
 
-// 			printf("I Erasing target region...\n");
-// 			flash_range_erase(flash_target_offset,FLASH_SECTOR_SIZE);
-// 			printf("I Programming target region...\n");
-// 			flash_range_program(flash_target_offset,buffer,FLASH_SECTOR_SIZE);
+void loading_cart_to_flash_block(const void *block, uint32_t block_size, void *user_data)
+{
+	// flash_write_state_t *state = (flash_write_state_t *)user_data;
 
-// 			/* Read back target region and check programming */
-// 			printf("I Done. Reading back target region...\n");
-// 			for(uint32_t i=0;i<FLASH_SECTOR_SIZE;i++) {
-// 				if(rom[flash_target_offset+i]!=buffer[i]) {
-// 					mismatch=true;
-// 				}
-// 			}
+	// // printf("I Erasing target region...\n");
+	// // flash_range_erase(flash_target_offset, FLASH_SECTOR_SIZE);
+	// // printf("I Programming target region...\n");
+	// // flash_range_program(flash_target_offset, buffer, FLASH_SECTOR_SIZE);
 
-// 			/* Next sector */
-// 			flash_target_offset+=FLASH_SECTOR_SIZE;
-// 		}
-// 		if(mismatch) {
-// 	        printf("I Programming successful!\n");
-// 		} else {
-// 			printf("E Programming failed!\n");
-// 		}
-// 	} else {
-// 		printf("E f_open(%s) error: %s (%d)\n",filename,FRESULT_str(fr),fr);
-// 	}
+	// printf("I Erasing target region...\n");
+	// flash_range_erase(state->flash_target_offset, block_size);
+	// printf("I Programming target region...\n");
+	// flash_range_program(state->flash_target_offset, block, block_size);
 
-// 	fr=f_close(&fil);
-// 	if(fr!=FR_OK) {
-// 		printf("E f_close error: %s (%d)\n", FRESULT_str(fr), fr);
-// 	}
-// 	f_unmount(pSD->pcName);
+	// // /* Read back target region and check programming */
+	// // printf("I Done. Reading back target region...\n");
+	// // for (uint32_t i = 0; i < block_size; i++)
+	// // {
+	// // 	if (rom[state->flash_target_offset + i] != ((uint8_t *)block)[i])
+	// // 	{
+	// // 		state->mismatch = true;
+	// // 	}
+	// // }
 
-// 	printf("I load_cart_rom_file(%s) COMPLETE (%lu bytes)\n",filename,br);
-// }
+	// /* Next sector */
+	// state->flash_target_offset += FLASH_SECTOR_SIZE;
+}
+
+/**
+ * Load a .gb rom file in flash from the SD card
+ */
+void load_cart_rom_file(char *filename)
+{
+	flash_write_state_t state = {
+		.flash_target_offset = FLASH_TARGET_OFFSET,
+		.mismatch = false};
+
+	if (!sd_read_file_sequential(filename, FLASH_SECTOR_SIZE, loading_cart_to_flash_block, (void *)&state))
+	{
+		printf("E Failed to read file %s from SD card.\n", filename);
+		return;
+	}
+
+	if (state.mismatch)
+	{
+		printf("I Programming successful!\n");
+	}
+	else
+	{
+		printf("E Programming failed!\n");
+	}
+
+	// printf("I load_cart_rom_file(%s) COMPLETE (%lu bytes)\n", filename, state.flash_target_offset - FLASH_TARGET_OFFSET);
+}
 
 /**
  * Function used by the rom file selector to display one page of .gb rom files
@@ -407,13 +413,14 @@ uint16_t rom_file_selector_display_page(char filename[22][256], uint16_t num_pag
 	/* store the filenames of this page */
 	display_text_set_bgcolor(0x0000);
 	display_text_set_color(0xFFFF);
+	display_text_set_cursor(0, 0);
 
 	display_clear();
 
 	for (int i = 0; i < found; i++)
 	{
 		strcpy(filename[i], entries[i].name);
-		display_text_write_line(filename[i]);
+		display_text_write_line_len(filename[i], MAX_LINE_LENGTH);
 	}
 
 	display_flush();
@@ -438,7 +445,7 @@ void rom_file_selector() {
 	// /* select the first rom */
 	uint8_t selected=0;
 	display_text_set_cursor(selected * LINE_HEIGHT, 0);
-	display_text_write_line_color(filename[selected], 0xFFFF, 0xF800);
+	display_text_write_line_color_len(filename[selected], MAX_LINE_LENGTH, 0xFFFF, 0xF800);
 	display_flush();
 
 	while(true) {
@@ -453,35 +460,35 @@ void rom_file_selector() {
 		if (controls_is_button_pressed(A) || controls_is_button_pressed(B))
 		{
 			/* copy the rom from the SD card to flash and start the game */
-			// load_cart_rom_file(filename[selected]);
+			load_cart_rom_file(filename[selected]);
 			break;
 		}
 		if (controls_is_button_pressed(DOWN))
 		{
 			/* select the next rom */
 			display_text_set_cursor(0, selected * LINE_HEIGHT);
-			display_text_write_line_color(filename[selected], 0xFFFF, 0x0000);
+			display_text_write_line_color_len(filename[selected], MAX_LINE_LENGTH, 0xFFFF, 0x0000);
 			selected++;
 			if(selected>=num_file) selected=0;
 			display_text_set_cursor(0, selected * LINE_HEIGHT);
-			display_text_write_line_color(filename[selected], 0xFFFF, 0xF800);
+			display_text_write_line_color_len(filename[selected], MAX_LINE_LENGTH, 0xFFFF, 0xF800);
 			display_flush();
-			sleep_ms(150);
+			sleep_ms(SELECTOR_SCROLL_DELAY_MS);
 		}
 		if (controls_is_button_pressed(UP))
 		{
 			/* select the previous rom */
 			display_text_set_cursor(0, selected * LINE_HEIGHT);
-			display_text_write_line_color(filename[selected], 0xFFFF, 0x0000);
+			display_text_write_line_color_len(filename[selected], MAX_LINE_LENGTH, 0xFFFF, 0x0000);
 			if(selected==0) {
 				selected=num_file-1;
 			} else {
 				selected--;
 			}
 			display_text_set_cursor(0, selected * LINE_HEIGHT);
-			display_text_write_line_color(filename[selected], 0xFFFF, 0xF800);
+			display_text_write_line_color_len(filename[selected], MAX_LINE_LENGTH, 0xFFFF, 0xF800);
 			display_flush();
-			sleep_ms(150);
+			sleep_ms(SELECTOR_SCROLL_DELAY_MS);
 		}
 		if (controls_is_button_pressed(RIGHT))
 		{
@@ -496,9 +503,9 @@ void rom_file_selector() {
 			/* select the first file */
 			selected=0;
 			display_text_set_cursor(0, selected * LINE_HEIGHT);
-			display_text_write_line_color(filename[selected], 0xFFFF, 0xF800);
+			display_text_write_line_color_len(filename[selected], MAX_LINE_LENGTH, 0xFFFF, 0xF800);
 			display_flush();
-			sleep_ms(150);
+			sleep_ms(SELECTOR_SCROLL_DELAY_MS);
 		}
 		if (controls_is_button_pressed(LEFT) && num_page > 0)
 		{
@@ -508,9 +515,9 @@ void rom_file_selector() {
 			/* select the first file */
 			selected = 0;
 			display_text_set_cursor(0, selected * LINE_HEIGHT);
-			display_text_write_line_color(filename[selected], 0xFFFF, 0xF800);
+			display_text_write_line_color_len(filename[selected], MAX_LINE_LENGTH, 0xFFFF, 0xF800);
 			display_flush();
-			sleep_ms(150);
+			sleep_ms(SELECTOR_SCROLL_DELAY_MS);
 		}
 
 		tight_loop_contents();

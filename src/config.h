@@ -1,3 +1,6 @@
 #pragma once
 
 #define LINE_HEIGHT 10
+#define FILES_PER_PAGE 22
+#define MAX_LINE_LENGTH 50
+#define SELECTOR_SCROLL_DELAY_MS 100

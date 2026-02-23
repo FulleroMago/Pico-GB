@@ -21,8 +21,14 @@ void display_text_set_cursor(uint8_t new_x, uint8_t new_y);
 // zápis řádku textu na aktuální pozici kurzoru a posunutí kurzoru na další řádek
 void display_text_write_line(const char *s);
 
+// zápis řádku textu s nastavením délky a posunutí kurzoru na další řádek
+void display_text_write_line_len(const char *str, size_t len);
+
 // zápis řádku textu s nastavením barvy textu a pozadí
 void display_text_write_line_color(const char *s, uint16_t color, uint16_t bgcolor);
+
+// zápis řádku textu s nastavením délky, barvy textu a pozadí
+void display_text_write_line_color_len(const char *str, size_t len, uint16_t color, uint16_t bgcolor);
 
 // nastavení barvy pozadí pro text
 void display_text_set_bgcolor(uint16_t color);
