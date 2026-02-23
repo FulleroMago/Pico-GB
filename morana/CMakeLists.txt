@@ -1,7 +1,6 @@
 add_library(morana
     morana.c
     display.c
-    sd_hw_config.c
     sd_card.c
     controls.c
 )

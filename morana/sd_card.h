@@ -7,7 +7,7 @@
 // Struktura pro položku adresáře
 typedef struct
 {
-    char name[256];
+    char name[64];
     uint8_t is_dir;
 } sd_entry_t;
 
@@ -19,6 +19,12 @@ typedef void (*sd_read_block_cb)(const void *block, uint32_t block_size, void *u
 
 // Inicializace SD karty
 bool sd_card_init(void);
+
+// Mountování SD karty
+bool sd_mount();
+
+// Unmountování SD karty
+bool sd_unmount();
 
 // Získání velikosti souboru
 int32_t sd_get_file_size(const char *filename);
@@ -54,13 +60,13 @@ bool sd_delete_directory(const char *dirname);
 bool sd_rename_directory(const char *old_dirname, const char *new_dirname);
 
 // Iterace adresářem pomocí callbacku
-int sd_list_directory_cb(const char *dirname, sd_entry_cb cb, void *user_data);
+uint8_t sd_list_directory_cb(const char *dirname, sd_entry_cb cb, void *user_data);
 
 // Získání seznamu položek adresáře do pole
-int sd_list_directory(const char *dirname, sd_entry_t *entries, int max_entries);
+uint8_t sd_list_directory(const char *dirname, sd_entry_t *entries, uint8_t max_entries);
 
 // Získání seznamu položek adresáře do pole s filtrováním podle vzoru
-int sd_list_directory_pattern(const char *dirname, const char *pattern, sd_entry_t *entries, int skip_entries, int max_entries);
+uint8_t sd_list_directory_pattern(const char *dirname, const char *pattern, sd_entry_t *entries, uint8_t skip_entries, uint8_t max_entries);
 
 // Deinicializace SD karty
 void sd_deinit(void);

@@ -66,16 +66,19 @@
 // #include "gbcolors.h"
 #include "config.h"
 
+#include "ff.h"
+#include "f_util.h"
+
 // /** Definition of ROM data
 //  * We're going to erase and reprogram a region 1Mb from the start of the flash
 //  * Once done, we can access this at XIP_BASE + 1Mb.
 //  * Game Boy DMG ROM size ranges from 32768 bytes (e.g. Tetris) to 1,048,576 bytes (e.g. Pokemod Red)
 //  */
 #define FLASH_TARGET_OFFSET (1024 * 1024)
-// const uint8_t *rom = (const uint8_t *)(XIP_BASE + FLASH_TARGET_OFFSET);
-// static unsigned char rom_bank0[65536];
+const uint8_t *rom = (const uint8_t *)(XIP_BASE + FLASH_TARGET_OFFSET);
+static unsigned char rom_bank0[65536];
 
-// static uint8_t ram[32768];
+static uint8_t ram[32768];
 // static int lcd_line_busy = 0;
 // static palette_t palette;	// Colour palette
 // static uint8_t manual_palette_selected=0;
@@ -339,30 +342,30 @@ typedef struct
 
 void loading_cart_to_flash_block(const void *block, uint32_t block_size, void *user_data)
 {
-	// flash_write_state_t *state = (flash_write_state_t *)user_data;
-
-	// // printf("I Erasing target region...\n");
-	// // flash_range_erase(flash_target_offset, FLASH_SECTOR_SIZE);
-	// // printf("I Programming target region...\n");
-	// // flash_range_program(flash_target_offset, buffer, FLASH_SECTOR_SIZE);
+	flash_write_state_t *state = (flash_write_state_t *)user_data;
 
 	// printf("I Erasing target region...\n");
-	// flash_range_erase(state->flash_target_offset, block_size);
+	// flash_range_erase(flash_target_offset, FLASH_SECTOR_SIZE);
 	// printf("I Programming target region...\n");
-	// flash_range_program(state->flash_target_offset, block, block_size);
+	// flash_range_program(flash_target_offset, buffer, FLASH_SECTOR_SIZE);
 
-	// // /* Read back target region and check programming */
-	// // printf("I Done. Reading back target region...\n");
-	// // for (uint32_t i = 0; i < block_size; i++)
-	// // {
-	// // 	if (rom[state->flash_target_offset + i] != ((uint8_t *)block)[i])
-	// // 	{
-	// // 		state->mismatch = true;
-	// // 	}
-	// // }
+	printf("I Erasing target region...\n");
+	flash_range_erase(state->flash_target_offset, block_size);
+	printf("I Programming target region...\n");
+	flash_range_program(state->flash_target_offset, block, block_size);
 
-	// /* Next sector */
-	// state->flash_target_offset += FLASH_SECTOR_SIZE;
+	/* Read back target region and check programming */
+	printf("I Done. Reading back target region...\n");
+	for (uint32_t i = 0; i < block_size; i++)
+	{
+		if (rom[state->flash_target_offset + i] != ((uint8_t *)block)[i])
+		{
+			state->mismatch = true;
+		}
+	}
+
+	/* Next sector */
+	state->flash_target_offset += FLASH_SECTOR_SIZE;
 }
 
 /**
@@ -395,7 +398,7 @@ void load_cart_rom_file(char *filename)
 /**
  * Function used by the rom file selector to display one page of .gb rom files
  */
-uint16_t rom_file_selector_display_page(char filename[22][256], uint16_t num_page)
+uint16_t rom_file_selector_display_page(char filename[22][64], uint16_t num_page)
 {
 	// /* clear the filenames array */
 	for (uint8_t ifile = 0; ifile < 22; ifile++)
@@ -436,7 +439,7 @@ uint16_t rom_file_selector_display_page(char filename[22][256], uint16_t num_pag
 void rom_file_selector() {
 
 	uint16_t num_page;
-	char filename[22][256];
+	char filename[22][64];
 	uint16_t num_file;
 
 	/* display the first page with up to 22 rom files */
