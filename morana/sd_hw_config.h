@@ -50,14 +50,11 @@ static spi_t spis[] = {
 };
 
 static sd_card_t sd_cards[] = {
-    {
-        .pcName = "0:",
-        .spi = &spis[0],
-        .ss_gpio = 13,
-        .use_card_detect = false,
-        .m_Status = STA_NOINIT
-    }
-};
+    {.pcName = "0:",
+     .spi = &spis[0],
+     .ss_gpio = SD_CS,
+     .use_card_detect = false,
+     .m_Status = STA_NOINIT}};
 
 void spi_dma_isr()
 {

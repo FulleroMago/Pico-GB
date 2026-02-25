@@ -21,18 +21,7 @@
 
 // /* Use DMA for all drawing to LCD. Benefits aren't fully realised at the moment
 //  * due to busy loops waiting for DMA completion. */
-// #define USE_DMA 0
-
-// /**
-//  * Reducing VSYNC calculation to lower multiple.
-//  * When setting a clock IRQ to DMG_CLOCK_FREQ_REDUCED, count to
-//  * SCREEN_REFRESH_CYCLES_REDUCED to obtain the time required each VSYNC.
-//  * DMG_CLOCK_FREQ_REDUCED = 2^18, and SCREEN_REFRESH_CYCLES_REDUCED = 4389.
-//  * Currently unused.
-//  */
-// #define VSYNC_REDUCTION_FACTOR 16u
-// #define SCREEN_REFRESH_CYCLES_REDUCED (SCREEN_REFRESH_CYCLES / VSYNC_REDUCTION_FACTOR)
-// #define DMG_CLOCK_FREQ_REDUCED (DMG_CLOCK_FREQ / VSYNC_REDUCTION_FACTOR)
+// #define USE_DMA 1
 
 /* C Headers */
 #include <stdio.h>
@@ -58,12 +47,12 @@
 #include "morana.h"
 
 /* Project headers */
-// #include "hedley.h"
+#include "hedley.h"
 // #include "minigb_apu.h"
 #include "peanut_gb.h"
 // #include "mk_ili9225.h"
 // #include "i2s.h"
-// #include "gbcolors.h"
+#include "gbcolors.h"
 #include "config.h"
 
 #include "ff.h"
@@ -79,189 +68,80 @@ const uint8_t *rom = (const uint8_t *)(XIP_BASE + FLASH_TARGET_OFFSET);
 static unsigned char rom_bank0[65536];
 
 static uint8_t ram[32768];
-// static int lcd_line_busy = 0;
-// static palette_t palette;	// Colour palette
-// static uint8_t manual_palette_selected=0;
+static palette_t palette; // Colour palette
+static uint8_t manual_palette_selected = 0;
 
-// /* Multicore command structure. */
-// union core_cmd {
-//     struct {
-// 	/* Does nothing. */
-// #define CORE_CMD_NOP		0
-// 	/* Set line "data" on the LCD. Pixel data is in pixels_buffer. */
-// #define CORE_CMD_LCD_LINE	1
-// 	/* Control idle mode on the LCD. Limits colours to 2 bits. */
-// #define CORE_CMD_IDLE_SET	2
-// 	/* Set a specific pixel. For debugging. */
-// #define CORE_CMD_SET_PIXEL	3
-// 	uint8_t cmd;
-// 	uint8_t unused1;
-// 	uint8_t unused2;
-// 	uint8_t data;
-//     };
-//     uint32_t full;
-// };
-
-// /* Pixel data is stored in here. */
-// static uint8_t pixels_buffer[LCD_WIDTH];
+/* Pixel data is stored in here. */
+static uint8_t pixels_buffer[LCD_WIDTH];
 
 #define putstdio(x) write(1, x, strlen(x))
 
-// /* Functions required for communication with the ILI9225. */
-// void mk_ili9225_set_rst(bool state)
-// {
-// 	gpio_put(GPIO_RST, state);
-// }
+/**
+ * Returns a byte from the ROM file at the given address.
+ */
+uint8_t gb_rom_read(struct gb_s *gb, const uint_fast32_t addr)
+{
+	(void)gb;
+	if (addr < sizeof(rom_bank0))
+		return rom_bank0[addr];
 
-// void mk_ili9225_set_rs(bool state)
-// {
-// 	gpio_put(GPIO_RS, state);
-// }
+	return rom[addr];
+}
 
-// void mk_ili9225_set_cs(bool state)
-// {
-// 	gpio_put(GPIO_CS, state);
-// }
+/**
+ * Returns a byte from the cartridge RAM at the given address.
+ */
+uint8_t gb_cart_ram_read(struct gb_s *gb, const uint_fast32_t addr)
+{
+	(void)gb;
+	return ram[addr];
+}
 
-// void mk_ili9225_set_led(bool state)
-// {
-// 	gpio_put(GPIO_LED, state);
-// }
+/**
+ * Writes a given byte to the cartridge RAM at the given address.
+ */
+void gb_cart_ram_write(struct gb_s *gb, const uint_fast32_t addr,
+					   const uint8_t val)
+{
+	ram[addr] = val;
+}
 
-// void mk_ili9225_spi_write16(const uint16_t *halfwords, size_t len)
-// {
-// 	spi_write16_blocking(spi0, halfwords, len);
-// }
+/**
+ * Ignore all errors.
+ */
+void gb_error(struct gb_s *gb, const enum gb_error_e gb_err, const uint16_t addr)
+{
+#if 1
+	const char *gb_err_str[4] = {
+		"UNKNOWN",
+		"INVALID OPCODE",
+		"INVALID READ",
+		"INVALID WRITE"};
+	printf("Error %d occurred: %s at %04X\n.\n", gb_err, gb_err_str[gb_err], addr);
+//	abort();
+#endif
+}
 
-// void mk_ili9225_delay_ms(unsigned ms)
-// {
-// 	sleep_ms(ms);
-// }
+void lcd_draw_line(struct gb_s *gb, const uint8_t pixels[LCD_WIDTH], const uint_fast8_t line)
+{
+	static uint16_t fb[LCD_WIDTH * 2] __attribute__((aligned(4)));
 
-// /**
-//  * Returns a byte from the ROM file at the given address.
-//  */
-// uint8_t gb_rom_read(struct gb_s *gb, const uint_fast32_t addr)
-// {
-// 	(void) gb;
-// 	if(addr < sizeof(rom_bank0))
-// 		return rom_bank0[addr];
+	for (unsigned int x = 0; x < LCD_WIDTH; x++)
+	{
+		uint16_t color = palette[(pixels[x] & LCD_PALETTE_ALL) >> 4][pixels[x] & 3];
+		fb[2 * x] = color;
+		fb[2 * x + 1] = color;
+	}
 
-// 	return rom[addr];
-// }
+	display_draw_bitmap(fb, 0, (uint16_t)(line * 1.5), LCD_WIDTH * 2, 1);
 
-// /**
-//  * Returns a byte from the cartridge RAM at the given address.
-//  */
-// uint8_t gb_cart_ram_read(struct gb_s *gb, const uint_fast32_t addr)
-// {
-// 	(void) gb;
-// 	return ram[addr];
-// }
-
-// /**
-//  * Writes a given byte to the cartridge RAM at the given address.
-//  */
-// void gb_cart_ram_write(struct gb_s *gb, const uint_fast32_t addr,
-// 		       const uint8_t val)
-// {
-// 	ram[addr] = val;
-// }
-
-// /**
-//  * Ignore all errors.
-//  */
-// void gb_error(struct gb_s *gb, const enum gb_error_e gb_err, const uint16_t addr)
-// {
-// #if 1
-// 	const char* gb_err_str[4] = {
-// 			"UNKNOWN",
-// 			"INVALID OPCODE",
-// 			"INVALID READ",
-// 			"INVALID WRITE"
-// 		};
-// 	printf("Error %d occurred: %s at %04X\n.\n", gb_err, gb_err_str[gb_err], addr);
-// //	abort();
-// #endif
-// }
-
-// #if ENABLE_LCD
-// void core1_lcd_draw_line(const uint_fast8_t line)
-// {
-// 	static uint16_t fb[LCD_WIDTH];
-
-// 	for(unsigned int x = 0; x < LCD_WIDTH; x++)
-// 	{
-// 		fb[x] = palette[(pixels_buffer[x] & LCD_PALETTE_ALL) >> 4]
-// 				[pixels_buffer[x] & 3];
-// 	}
-
-// 	mk_ili9225_set_x(line + 16);
-// 	mk_ili9225_write_pixels(fb, LCD_WIDTH);
-// 	__atomic_store_n(&lcd_line_busy, 0, __ATOMIC_SEQ_CST);
-// }
-
-// _Noreturn
-// void main_core1(void)
-// {
-// 	union core_cmd cmd;
-
-// 	/* Initialise and control LCD on core 1. */
-// 	mk_ili9225_init();
-
-// 	/* Clear LCD screen. */
-// 	mk_ili9225_fill(0x0000);
-
-// 	/* Set LCD window to DMG size. */
-// 	mk_ili9225_fill_rect(31, 16, LCD_WIDTH, LCD_HEIGHT, 0x0000);
-
-// 	// Sleep used for debugging LCD window.
-// 	//sleep_ms(1000);
-
-// 	/* Handle commands coming from core0. */
-// 	while(1)
-// 	{
-// 		cmd.full = multicore_fifo_pop_blocking();
-// 		switch(cmd.cmd)
-// 		{
-// 		case CORE_CMD_LCD_LINE:
-// 			core1_lcd_draw_line(cmd.data);
-// 			break;
-
-// 		case CORE_CMD_IDLE_SET:
-// 			mk_ili9225_display_control(true, cmd.data);
-// 			break;
-
-// 		case CORE_CMD_NOP:
-// 		default:
-// 			break;
-// 		}
-// 	}
-
-// 	HEDLEY_UNREACHABLE();
-// }
-// #endif
-
-// #if ENABLE_LCD
-// void lcd_draw_line(struct gb_s *gb, const uint8_t pixels[LCD_WIDTH],
-// 		   const uint_fast8_t line)
-// {
-// 	union core_cmd cmd;
-
-// 	/* Wait until previous line is sent. */
-// 	while(__atomic_load_n(&lcd_line_busy, __ATOMIC_SEQ_CST))
-// 		tight_loop_contents();
-
-// 	memcpy(pixels_buffer, pixels, LCD_WIDTH);
-
-// 	/* Populate command. */
-// 	cmd.cmd = CORE_CMD_LCD_LINE;
-// 	cmd.data = line;
-
-// 	__atomic_store_n(&lcd_line_busy, 1, __ATOMIC_SEQ_CST);
-// 	multicore_fifo_push_blocking(cmd.full);
-// }
-// #endif
+	// // Pokud je další řádek "vynechaný", vykresli tam alternativní obsah
+	// if (((int)(line * 2) % 3) != 0)
+	// {
+	// 	uint16_t bgColor = palette[2][0];										  // Barva pozadí z palety
+	// 	display_draw_line(bgColor, 0, (uint16_t)(line * 1.5 + 1), LCD_WIDTH * 2); // vykreslíme znovu stejný řádek, aby se snížilo blikání při zapnutém interlace módu
+	// }
+}
 
 // #if ENABLE_SDCARD
 // /**
@@ -343,11 +223,6 @@ typedef struct
 void loading_cart_to_flash_block(const void *block, uint32_t block_size, void *user_data)
 {
 	flash_write_state_t *state = (flash_write_state_t *)user_data;
-
-	// printf("I Erasing target region...\n");
-	// flash_range_erase(flash_target_offset, FLASH_SECTOR_SIZE);
-	// printf("I Programming target region...\n");
-	// flash_range_program(flash_target_offset, buffer, FLASH_SECTOR_SIZE);
 
 	printf("I Erasing target region...\n");
 	flash_range_erase(state->flash_target_offset, block_size);
@@ -436,11 +311,14 @@ uint16_t rom_file_selector_display_page(char filename[22][64], uint16_t num_page
  * allowing the user to select which rom file to start
  * Copy your *.gb rom files to the root directory of the SD card
  */
-void rom_file_selector() {
+void rom_file_selector()
+{
 
 	uint16_t num_page;
 	char filename[22][64];
 	uint16_t num_file;
+
+	display_set_line_height(LINE_HEIGHT);
 
 	/* display the first page with up to 22 rom files */
 	num_file = rom_file_selector_display_page(filename, num_page);
@@ -527,271 +405,217 @@ void rom_file_selector() {
 	}
 }
 
-// #endif
+void update_gb_joypad(struct gb_s *gb)
+{
+	controls_update();
+
+	gb->direct.joypad_bits.up = !controls_is_button_pressed(UP);
+	gb->direct.joypad_bits.down = !controls_is_button_pressed(DOWN);
+	gb->direct.joypad_bits.left = !controls_is_button_pressed(LEFT);
+	gb->direct.joypad_bits.right = !controls_is_button_pressed(RIGHT);
+	gb->direct.joypad_bits.a = !controls_is_button_pressed(A);
+	gb->direct.joypad_bits.b = !controls_is_button_pressed(B);
+
+	gb->direct.joypad_bits.select = !controls_is_button_pressed(SELECT);
+	gb->direct.joypad_bits.start = !controls_is_button_pressed(START);
+}
+
+void update_serial_input(struct gb_s *gb)
+{
+	static uint_fast32_t frames = 0;
+	static uint64_t start_time = 0;
+
+	if (start_time == 0)
+		start_time = time_us_64();
+
+	frames++;
+
+	/* Serial monitor commands */
+	int input = getchar_timeout_us(0);
+	if (input == PICO_ERROR_TIMEOUT)
+		return;
+
+	switch (input)
+	{
+	case 'i':
+		gb->direct.interlace = !gb->direct.interlace;
+		break;
+
+	case 'f':
+		gb->direct.frame_skip = !gb->direct.frame_skip;
+		break;
+
+	case 'b':
+	{
+		uint64_t end_time;
+		uint32_t diff;
+		uint32_t fps;
+
+		end_time = time_us_64();
+		diff = end_time - start_time;
+		fps = ((uint64_t)frames * 1000 * 1000) / diff;
+		printf("Frames: %u\n"
+			   "Time: %lu us\n"
+			   "FPS: %lu\n",
+			   frames, diff, fps);
+		stdio_flush();
+		frames = 0;
+		start_time = time_us_64();
+		break;
+	}
+
+	default:
+	{
+		break;
+	}
+	}
+}
+
+void update_menu_combos(struct gb_s *gb)
+{
+	while (controls_is_button_pressed(MENU))
+	{
+		controls_update();
+
+		if (controls_is_button_pressed(RIGHT))
+		{
+			/* select + right: select the next manual color palette */
+			if (manual_palette_selected < 12)
+			{
+				manual_palette_selected++;
+				manual_assign_palette(palette, manual_palette_selected);
+			}
+
+			sleep_ms(MENU_COMBO_DELAY_MS);
+		}
+		if (controls_is_button_pressed(LEFT))
+		{
+			/* select + left: select the previous manual color palette */
+			if (manual_palette_selected > 0)
+			{
+				manual_palette_selected--;
+				manual_assign_palette(palette, manual_palette_selected);
+			}
+
+			sleep_ms(MENU_COMBO_DELAY_MS);
+		}
+		// if (controls_is_button_pressed(X))
+		// {
+		// 	/* select + start: save ram and resets to the game selection menu */
+		// 	write_cart_ram_file(gb);
+		// 	// rom_file_selector();
+		// }
+		// if(controls_is_button_pressed(Y))
+		// {
+		// 	read_cart_ram_file(gb);
+		// }
+		if (controls_is_button_pressed(UP))
+		{
+			/* select + up: toggle interlace mode */
+			gb->direct.interlace = !gb->direct.interlace;
+
+			sleep_ms(MENU_COMBO_DELAY_MS);
+		}
+		if (controls_is_button_pressed(DOWN))
+		{
+			/* select + Y: toggle auto-assign palette on/off */
+			if (manual_palette_selected == 0)
+			{
+				manual_palette_selected = 1;
+				manual_assign_palette(palette, manual_palette_selected);
+			}
+			else
+			{
+				manual_palette_selected = 0;
+				auto_assign_palette(palette, gb_colour_hash(gb), NULL);
+			}
+
+			sleep_ms(MENU_COMBO_DELAY_MS);
+		}
+		if (controls_is_button_pressed(A))
+		{
+			/* select + A: toggle frame-skip on/off */
+			gb->direct.frame_skip = !gb->direct.frame_skip;
+
+			sleep_ms(MENU_COMBO_DELAY_MS);
+		}
+
+		// 	if (!gb.direct.joypad_bits.a && prev_joypad_bits.a)
+		// 	{
+		// 		/* select + A: enable/disable frame-skip => fast-forward */
+		// 		gb.direct.frame_skip = !gb.direct.frame_skip;
+		// 		printf("I gb.direct.frame_skip = %d\n", gb.direct.frame_skip);
+		// 	}
+	}
+}
 
 int main(void)
 {
 	static struct gb_s gb;
 	enum gb_init_error_e ret;
 
-	/* Overclock. */
-	{
-		const unsigned vco = 1596*1000*1000;	/* 266MHz */
-		const unsigned div1 = 6, div2 = 1;
+	const unsigned vco = 1596 * 1000 * 1000; /* 266MHz */
+	const unsigned div1 = 6, div2 = 1;
 
-		vreg_set_voltage(VREG_VOLTAGE_1_15);
-		sleep_ms(2);
-		set_sys_clock_pll(vco, div1, div2);
-		sleep_ms(2);
-	}
+	vreg_set_voltage(VREG_VOLTAGE_1_15);
+	sleep_ms(2);
+	set_sys_clock_pll(vco, div1, div2);
+	sleep_ms(2);
 
 	/* Initialise USB serial connection for debugging. */
 	stdio_init_all();
-	// time_init();
-	// sleep_ms(5000);
-	putstdio("INIT: ");
-
 	morana_init_all();
-	display_set_line_height(LINE_HEIGHT);
-
-	// 	gpio_set_slew_rate(GPIO_CLK, GPIO_SLEW_RATE_FAST);
-	// 	gpio_set_slew_rate(GPIO_SDA, GPIO_SLEW_RATE_FAST);
-
-	// /* Set SPI clock to use high frequency. */
-	// clock_configure(clk_peri, 0,
-	// 		CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLK_SYS,
-	// 		125 * 1000 * 1000, 125 * 1000 * 1000);
-	// spi_init(spi0, 30*1000*1000);
-	// spi_set_format(spi0, 16, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
 
 	while (true)
 	{
 		/* ROM File selector */
 		rom_file_selector();
 
-		// 	/* Initialise GB context. */
-		// 	memcpy(rom_bank0, rom, sizeof(rom_bank0));
-		// 	ret = gb_init(&gb, &gb_rom_read, &gb_cart_ram_read,
-		// 		      &gb_cart_ram_write, &gb_error, NULL);
-		// 	putstdio("GB ");
+		/* Initialise GB context. */
+		memcpy(rom_bank0, rom, sizeof(rom_bank0));
+		ret = gb_init(&gb, &gb_rom_read, &gb_cart_ram_read,
+					  &gb_cart_ram_write, &gb_error, NULL);
 
-		// 	if(ret != GB_INIT_NO_ERROR)
-		// 	{
-		// 		printf("Error: %d\n", ret);
-		// 		goto out;
-		// 	}
+		if (ret != GB_INIT_NO_ERROR)
+		{
+			printf("Error: %d\n", ret);
+			break;
+			// goto out;
+		}
 
-		// 	/* Automatically assign a colour palette to the game */
-		// 	char rom_title[16];
-		// 	auto_assign_palette(palette, gb_colour_hash(&gb), gb_get_rom_name(&gb, rom_title));
+		/* Automatically assign a colour palette to the game */
+		char rom_title[16];
+		auto_assign_palette(palette, gb_colour_hash(&gb), gb_get_rom_name(&gb, rom_title));
 
-		// #if ENABLE_LCD
-		// 	gb_init_lcd(&gb, &lcd_draw_line);
+		gb_init_lcd(&gb, &lcd_draw_line);
 
-		// 	/* Start Core1, which processes requests to the LCD. */
-		// 	putstdio("CORE1 ");
-		// 	multicore_launch_core1(main_core1);
-
-		// 	putstdio("LCD ");
-		// #endif
+		display_clear();
 
 		// #if ENABLE_SDCARD
 		// 	/* Load Save File. */
 		// 	read_cart_ram_file(&gb);
 		// #endif
 
-		// 	putstdio("\n> ");
-		// 	uint_fast32_t frames = 0;
-		// 	uint64_t start_time = time_us_64();
-		// 	while (1)
-		// 	{
-		// 		int input;
+		gb.direct.frame_skip = true; // zapnutí frame_skip může zlepšit výkon u náročnějších her, ale může způsob
+		// gb.direct.interlace = true;  // zapnutí interlace módu může zlepšit výkon u náročnějších her, ale může způsobit blikání obrazu. Můžete ho vypnout v menu (select + up) pro stabilnější obraz, ale s možným snížením FPS u náročnějších her.
 
-		// 		gb.gb_frame = 0;
+		while (1)
+		{
+			int input;
 
-		// 		do
-		// 		{
-		// 			__gb_step_cpu(&gb);
-		// 			tight_loop_contents();
-		// 		} while (HEDLEY_LIKELY(gb.gb_frame == 0));
+			gb.gb_frame = 0;
 
-		// 		frames++;
+			do
+			{
+				__gb_step_cpu(&gb);
+				tight_loop_contents();
+			} while (HEDLEY_LIKELY(gb.gb_frame == 0));
 
-		// 		/* Update buttons state */
-		// 		prev_joypad_bits.up = gb.direct.joypad_bits.up;
-		// 		prev_joypad_bits.down = gb.direct.joypad_bits.down;
-		// 		prev_joypad_bits.left = gb.direct.joypad_bits.left;
-		// 		prev_joypad_bits.right = gb.direct.joypad_bits.right;
-		// 		prev_joypad_bits.a = gb.direct.joypad_bits.a;
-		// 		prev_joypad_bits.b = gb.direct.joypad_bits.b;
-		// 		prev_joypad_bits.select = gb.direct.joypad_bits.select;
-		// 		prev_joypad_bits.start = gb.direct.joypad_bits.start;
-		// 		gb.direct.joypad_bits.up = gpio_get(GPIO_UP);
-		// 		gb.direct.joypad_bits.down = gpio_get(GPIO_DOWN);
-		// 		gb.direct.joypad_bits.left = gpio_get(GPIO_LEFT);
-		// 		gb.direct.joypad_bits.right = gpio_get(GPIO_RIGHT);
-		// 		gb.direct.joypad_bits.a = gpio_get(GPIO_A);
-		// 		gb.direct.joypad_bits.b = gpio_get(GPIO_B);
-		// 		gb.direct.joypad_bits.select = gpio_get(GPIO_SELECT);
-		// 		gb.direct.joypad_bits.start = gpio_get(GPIO_START);
+			update_gb_joypad(&gb);
+			update_menu_combos(&gb);
+			update_serial_input(&gb);
+		}
 
-		// 		/* hotkeys (select + * combo)*/
-		// 		if (!gb.direct.joypad_bits.select)
-		// 		{
-		// 			if(!gb.direct.joypad_bits.right && prev_joypad_bits.right) {
-		// 				/* select + right: select the next manual color palette */
-		// 				if(manual_palette_selected<12) {
-		// 					manual_palette_selected++;
-		// 					manual_assign_palette(palette,manual_palette_selected);
-		// 				}
-		// 			}
-		// 			if(!gb.direct.joypad_bits.left && prev_joypad_bits.left) {
-		// 				/* select + left: select the previous manual color palette */
-		// 				if(manual_palette_selected>0) {
-		// 					manual_palette_selected--;
-		// 					manual_assign_palette(palette,manual_palette_selected);
-		// 				}
-		// 			}
-		// 			if(!gb.direct.joypad_bits.start && prev_joypad_bits.start) {
-		// 				/* select + start: save ram and resets to the game selection menu */
-		// #if ENABLE_SDCARD
-		// 				write_cart_ram_file(&gb);
-		// #endif
-		// 				goto out;
-		// 			}
-		// 			if(!gb.direct.joypad_bits.a && prev_joypad_bits.a) {
-		// 				/* select + A: enable/disable frame-skip => fast-forward */
-		// 				gb.direct.frame_skip=!gb.direct.frame_skip;
-		// 				printf("I gb.direct.frame_skip = %d\n",gb.direct.frame_skip);
-		// 			}
-		// 		}
-
-		// 		/* Serial monitor commands */
-		// 		input = getchar_timeout_us(0);
-		// 		if(input == PICO_ERROR_TIMEOUT)
-		// 			continue;
-
-		// 		switch(input)
-		// 		{
-		// #if 0
-		// 		static bool invert = false;
-		// 		static bool sleep = false;
-		// 		static uint8_t freq = 1;
-		// 		static ili9225_color_mode_e colour = ILI9225_COLOR_MODE_FULL;
-
-		// 		case 'i':
-		// 			invert = !invert;
-		// 			mk_ili9225_display_control(invert, colour);
-		// 			break;
-
-		// 		case 'f':
-		// 			freq++;
-		// 			freq &= 0x0F;
-		// 			mk_ili9225_set_drive_freq(freq);
-		// 			printf("Freq %u\n", freq);
-		// 			break;
-		// #endif
-		// 		case 'c':
-		// 		{
-		// 			static ili9225_color_mode_e mode = ILI9225_COLOR_MODE_FULL;
-		// 			union core_cmd cmd;
-
-		// 			mode = !mode;
-		// 			cmd.cmd = CORE_CMD_IDLE_SET;
-		// 			cmd.data = mode;
-		// 			multicore_fifo_push_blocking(cmd.full);
-		// 			break;
-		// 		}
-
-		// 		case 'i':
-		// 			gb.direct.interlace = !gb.direct.interlace;
-		// 			break;
-
-		// 		case 'f':
-		// 			gb.direct.frame_skip = !gb.direct.frame_skip;
-		// 			break;
-
-		// 		case 'b':
-		// 		{
-		// 			uint64_t end_time;
-		// 			uint32_t diff;
-		// 			uint32_t fps;
-
-		// 			end_time = time_us_64();
-		// 			diff = end_time-start_time;
-		// 			fps = ((uint64_t)frames*1000*1000)/diff;
-		// 			printf("Frames: %u\n"
-		// 				"Time: %lu us\n"
-		// 				"FPS: %lu\n",
-		// 				frames, diff, fps);
-		// 			stdio_flush();
-		// 			frames = 0;
-		// 			start_time = time_us_64();
-		// 			break;
-		// 		}
-
-		// 		case '\n':
-		// 		case '\r':
-		// 		{
-		// 			gb.direct.joypad_bits.start = 0;
-		// 			break;
-		// 		}
-
-		// 		case '\b':
-		// 		{
-		// 			gb.direct.joypad_bits.select = 0;
-		// 			break;
-		// 		}
-
-		// 		case '8':
-		// 		{
-		// 			gb.direct.joypad_bits.up = 0;
-		// 			break;
-		// 		}
-
-		// 		case '2':
-		// 		{
-		// 			gb.direct.joypad_bits.down = 0;
-		// 			break;
-		// 		}
-
-		// 		case '4':
-		// 		{
-		// 			gb.direct.joypad_bits.left= 0;
-		// 			break;
-		// 		}
-
-		// 		case '6':
-		// 		{
-		// 			gb.direct.joypad_bits.right = 0;
-		// 			break;
-		// 		}
-
-		// 		case 'z':
-		// 		case 'w':
-		// 		{
-		// 			gb.direct.joypad_bits.a = 0;
-		// 			break;
-		// 		}
-
-		// 		case 'x':
-		// 		{
-		// 			gb.direct.joypad_bits.b = 0;
-		// 			break;
-		// 		}
-
-		// 		case 'q':
-		// 			goto out;
-
-		// 		default:
-		// 			break;
-		// 		}
-		// 	}
-		// out:
-		// 	puts("\nEmulation Ended");
-		// 	/* stop lcd task running on core 1 */
-		// 	multicore_reset_core1();
+		morana_deinit_all();
 	}
-
-	morana_deinit_all();
 }

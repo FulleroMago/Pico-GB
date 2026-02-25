@@ -21,7 +21,7 @@
 #define SD_CS 13
 // #define SD_BAUDRATE 25000000 // 25 MHz
 
-// Buttons - GPIO Connections.
+// Talčítka - GPIO Connections.
 #define GPIO_CONTROL_RIGHT 2
 #define GPIO_CONTROL_LEFT 3
 #define GPIO_CONTROL_UP 4

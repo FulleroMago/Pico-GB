@@ -140,7 +140,7 @@ void GFX_drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color)
 	GFX_drawLine(x, y, x, y + h - 1, color);
 }
 
-void GFX_drawFastHLine(int16_t x, int16_t y, int16_t l, uint16_t color)
+void 	GFX_drawFastHLine(int16_t x, int16_t y, int16_t l, uint16_t color)
 {
 	GFX_drawLine(x, y, x + l - 1, y, color);
 }

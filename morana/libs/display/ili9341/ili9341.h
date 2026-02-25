@@ -4,7 +4,7 @@
 #include "hardware/spi.h"
 
 // Use DMA?
-//#define USE_DMA 1
+#define USE_DMA 1
 
 #define MADCTL_MY 0x80  ///< Bottom to top
 #define MADCTL_MX 0x40  ///< Right to left
