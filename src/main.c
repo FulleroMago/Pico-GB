@@ -539,6 +539,12 @@ void update_menu_combos(struct gb_s *gb)
 
 			sleep_ms(MENU_COMBO_DELAY_MS);
 		}
+		if (controls_is_button_pressed(SELECT))
+		{
+			/* select + start: save ram and resets to the game selection menu */
+			// write_cart_ram_file(&gb);
+			rom_file_selector();
+		}
 
 		// 	if (!gb.direct.joypad_bits.a && prev_joypad_bits.a)
 		// 	{
