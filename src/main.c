@@ -471,7 +471,7 @@ void update_serial_input(struct gb_s *gb)
 	}
 }
 
-void update_menu_combos(struct gb_s *gb)
+bool update_menu_combos(struct gb_s *gb)
 {
 	while (controls_is_button_pressed(MENU))
 	{
@@ -543,7 +543,10 @@ void update_menu_combos(struct gb_s *gb)
 		{
 			/* select + start: save ram and resets to the game selection menu */
 			// write_cart_ram_file(&gb);
-			rom_file_selector();
+			// rom_file_selector();
+
+			// prozatím jen návrat do výběru rom bez uložení, protože zatím není implementováno načítaní uložené pozice z ramky, takže by to stejně nemělo efekt
+			return true;
 		}
 
 		// 	if (!gb.direct.joypad_bits.a && prev_joypad_bits.a)
@@ -553,6 +556,8 @@ void update_menu_combos(struct gb_s *gb)
 		// 		printf("I gb.direct.frame_skip = %d\n", gb.direct.frame_skip);
 		// 	}
 	}
+
+	return false;
 }
 
 int main(void)
@@ -618,10 +623,14 @@ int main(void)
 			} while (HEDLEY_LIKELY(gb.gb_frame == 0));
 
 			update_gb_joypad(&gb);
-			update_menu_combos(&gb);
+			if (update_menu_combos(&gb))
+			{
+				// pokud se v menu zvolí návrat do výběru rom, ukončíme běh aktuální instance emulátoru a vrátíme se do výběru rom
+				break;
+			}
 			update_serial_input(&gb);
 		}
-
-		morana_deinit_all();
 	}
+
+	morana_deinit_all();
 }
