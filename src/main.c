@@ -1,9 +1,9 @@
 /**
  * Copyright (C) 2022 by Mahyar Koshkouei <mk@deltabeard.com>
- * 
+ *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
  * REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
  * AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
@@ -14,14 +14,14 @@
  */
 
 // // Peanut-GB emulator settings
-// #define ENABLE_LCD 1
-// #define ENABLE_SDCARD 1
-// #define PEANUT_GB_HIGH_LCD_ACCURACY 1
-// #define PEANUT_GB_USE_BIOS 0
+#define ENABLE_LCD 1
+#define ENABLE_SDCARD 1
+#define PEANUT_GB_HIGH_LCD_ACCURACY 1
+#define PEANUT_GB_USE_BIOS 0
 
 // /* Use DMA for all drawing to LCD. Benefits aren't fully realised at the moment
 //  * due to busy loops waiting for DMA completion. */
-// #define USE_DMA 1
+#define USE_DMA 1
 
 /* C Headers */
 #include <stdio.h>
@@ -30,13 +30,10 @@
 
 /* RP2040 Headers */
 #include <hardware/pio.h>
-#include <hardware/clocks.h>
 #include <hardware/dma.h>
 #include <hardware/spi.h>
 #include <hardware/sync.h>
 #include <hardware/flash.h>
-#include <hardware/timer.h>
-#include <hardware/vreg.h>
 #include <pico/bootrom.h>
 #include <pico/stdio.h>
 #include <pico/stdlib.h>
@@ -50,13 +47,43 @@
 #include "hedley.h"
 // #include "minigb_apu.h"
 #include "peanut_gb.h"
-// #include "mk_ili9225.h"
-// #include "i2s.h"
 #include "gbcolors.h"
 #include "config.h"
 
 #include "ff.h"
 #include "f_util.h"
+
+union core_cmd
+{
+	struct
+	{
+		/* Does nothing. */
+#define CORE_CMD_NOP 0
+		/* Set line "data" on the LCD. Pixel data is in pixels_buffer. */
+#define CORE_CMD_LCD_LINE 1
+		/* Control idle mode on the LCD. Limits colours to 2 bits. */
+#define CORE_CMD_IDLE_SET 2
+		/* Set a specific pixel. For debugging. */
+#define CORE_CMD_SET_PIXEL 3
+		uint8_t cmd;
+		uint8_t unused1;
+		uint8_t unused2;
+		uint8_t data;
+	};
+	uint32_t full;
+};
+
+enum ScalingMode
+{
+	NORMAL = 0,
+	STRETCH,
+	STRETCH_KEEP_ASPECT,
+	INTERLACE,
+	INTERLACE_KEEP_ASPECT,
+	COUNT
+};
+
+volatile enum ScalingMode scalingMode = NORMAL;
 
 // /** Definition of ROM data
 //  * We're going to erase and reprogram a region 1Mb from the start of the flash
@@ -73,6 +100,7 @@ static uint8_t manual_palette_selected = 0;
 
 /* Pixel data is stored in here. */
 static uint8_t pixels_buffer[LCD_WIDTH];
+static int lcd_line_busy = 0;
 
 #define putstdio(x) write(1, x, strlen(x))
 
@@ -122,26 +150,32 @@ void gb_error(struct gb_s *gb, const enum gb_error_e gb_err, const uint16_t addr
 #endif
 }
 
-void lcd_draw_line(struct gb_s *gb, const uint8_t pixels[LCD_WIDTH], const uint_fast8_t line)
-{
-	static uint16_t fb[LCD_WIDTH * 2] __attribute__((aligned(4)));
+// void lcd_draw_line(struct gb_s *gb, const uint8_t pixels[LCD_WIDTH], const uint_fast8_t line)
+// {
+// 	// static uint16_t fb[DISPLAY_WIDTH] __attribute__((aligned(4)));
+// 	static uint16_t fb[LCD_WIDTH];
 
-	for (unsigned int x = 0; x < LCD_WIDTH; x++)
-	{
-		uint16_t color = palette[(pixels[x] & LCD_PALETTE_ALL) >> 4][pixels[x] & 3];
-		fb[2 * x] = color;
-		fb[2 * x + 1] = color;
-	}
+// 	for (unsigned int x = 0; x < LCD_WIDTH; x++)
+// 	{
+// 		uint16_t color = palette[(pixels[x] & LCD_PALETTE_ALL) >> 4][pixels[x] & 3];
+// 		fb[x] = color;
+// 		// fb[2 * x + 1] = color;
+// 		// fb[2 * x + LCD_WIDTH * 2] = color;
+// 		// fb[2 * x + LCD_WIDTH * 2 + 1] = color;
+// 	}
 
-	display_draw_bitmap(fb, 0, (uint16_t)(line * 1.5), LCD_WIDTH * 2, 1);
+// 	// uint16_t line_double = line * 2; // Interlace mode: duplicate each line to reduce flickering
+// 	// display_bmp_draw(fb, 0, line_double, DISPLAY_WIDTH * 2, 2);
+// 	// display_bmp_draw(fb, 0, line, DISPLAY_WIDTH, 1);
+// 	display_bmp_draw(fb, 0, line, LCD_WIDTH, 1);
 
-	// // Pokud je další řádek "vynechaný", vykresli tam alternativní obsah
-	// if (((int)(line * 2) % 3) != 0)
-	// {
-	// 	uint16_t bgColor = palette[2][0];										  // Barva pozadí z palety
-	// 	display_draw_line(bgColor, 0, (uint16_t)(line * 1.5 + 1), LCD_WIDTH * 2); // vykreslíme znovu stejný řádek, aby se snížilo blikání při zapnutém interlace módu
-	// }
-}
+// 	// // Pokud je další řádek "vynechaný", vykresli tam alternativní obsah
+// 	// if (((int)(line * 2) % 3) != 0)
+// 	// {
+// 	// 	uint16_t bgColor = palette[2][0];										  // Barva pozadí z palety
+// 	// 	display_draw_line(bgColor, 0, (uint16_t)(line * 1.5 + 1), LCD_WIDTH * 2); // vykreslíme znovu stejný řádek, aby se snížilo blikání při zapnutém interlace módu
+// 	// }
+// }
 
 // #if ENABLE_SDCARD
 // /**
@@ -273,41 +307,35 @@ void load_cart_rom_file(char *filename)
 /**
  * Function used by the rom file selector to display one page of .gb rom files
  */
-uint16_t rom_file_selector_display_page(char filename[22][64], uint16_t num_page)
+uint16_t rom_file_selector_display_page(char filename[FILES_PER_PAGE][64], uint16_t num_page)
 {
 	// /* clear the filenames array */
-	for (uint8_t ifile = 0; ifile < 22; ifile++)
+	for (uint8_t ifile = 0; ifile < FILES_PER_PAGE; ifile++)
 	{
-		strcpy(filename[ifile],"");
+		strcpy(filename[ifile], "");
 	}
 
 	/* search *.gb files */
-	int files_per_page = 22;
-	int files_to_skip = num_page * files_per_page;
+	int files_to_skip = num_page * FILES_PER_PAGE;
 
-	sd_entry_t entries[files_per_page];
-	int found = sd_list_directory_pattern("", "*.gb", entries, files_to_skip, files_per_page);
+	sd_entry_t entries[FILES_PER_PAGE];
+	int found = sd_list_directory_pattern("", "*.gb", entries, files_to_skip, FILES_PER_PAGE);
 
 	/* store the filenames of this page */
-	display_text_set_bgcolor(0x0000);
-	display_text_set_color(0xFFFF);
-	display_text_set_cursor(0, 0);
-
 	display_clear();
+	display_txt_set_cursor(0, 0);
 
 	for (int i = 0; i < found; i++)
 	{
 		strcpy(filename[i], entries[i].name);
-		display_text_write_line_len(filename[i], MAX_LINE_LENGTH);
+		display_txt_write_line(filename[i]);
 	}
-
-	display_flush();
 
 	return found;
 }
 
 /**
- * The ROM selector displays pages of up to 22 rom files
+ * The ROM selector displays pages of up to FILES_PER_PAGE rom files
  * allowing the user to select which rom file to start
  * Copy your *.gb rom files to the root directory of the SD card
  */
@@ -315,23 +343,34 @@ void rom_file_selector()
 {
 
 	uint16_t num_page;
-	char filename[22][64];
+	char filename[FILES_PER_PAGE][64];
 	uint16_t num_file;
 
-	display_set_line_height(LINE_HEIGHT);
+	text_box box = {
+		.box.position = {5, 5},
+		.box.size = {DISPLAY_WIDTH - 10, DISPLAY_HEIGHT - 10},
+		.line_margin = 1,
+		.text_color = SELECTOR_TEXT_COLOR,
+		.text_bgcolor = SELECTOR_BG_COLOR,
+		.line = 0,
+		.column = 0,
+		.wrap = DISPLAY_TXT_WRAP_NONE};
+
+	display_txt_set_text_box(&box);
 
 	/* display the first page with up to 22 rom files */
 	num_file = rom_file_selector_display_page(filename, num_page);
 
 	// /* select the first rom */
-	uint8_t selected=0;
-	display_text_set_cursor(selected * LINE_HEIGHT, 0);
-	display_text_write_line_color_len(filename[selected], MAX_LINE_LENGTH, 0xFFFF, 0xF800);
-	display_flush();
+	uint8_t selected = 0;
+	display_txt_set_cursor(selected, 0);
+	display_txt_write_line_color(filename[selected], SELECTOR_HIGHLIGHT_COLOR, SELECTOR_BG_COLOR);
 
-	while(true) {
+	while (true)
+	{
 
 		controls_update();
+		display_txt_set_cursor(selected, 0);
 
 		if (controls_is_button_pressed(START))
 		{
@@ -347,45 +386,45 @@ void rom_file_selector()
 		if (controls_is_button_pressed(DOWN))
 		{
 			/* select the next rom */
-			display_text_set_cursor(0, selected * LINE_HEIGHT);
-			display_text_write_line_color_len(filename[selected], MAX_LINE_LENGTH, 0xFFFF, 0x0000);
+			display_txt_write_line_color(filename[selected], SELECTOR_TEXT_COLOR, SELECTOR_BG_COLOR);
 			selected++;
-			if(selected>=num_file) selected=0;
-			display_text_set_cursor(0, selected * LINE_HEIGHT);
-			display_text_write_line_color_len(filename[selected], MAX_LINE_LENGTH, 0xFFFF, 0xF800);
-			display_flush();
+			if (selected >= num_file)
+				selected = 0;
+			display_txt_set_cursor(selected, 0);
+			display_txt_write_line_color(filename[selected], SELECTOR_HIGHLIGHT_COLOR, SELECTOR_BG_COLOR);
 			sleep_ms(SELECTOR_SCROLL_DELAY_MS);
 		}
 		if (controls_is_button_pressed(UP))
 		{
 			/* select the previous rom */
-			display_text_set_cursor(0, selected * LINE_HEIGHT);
-			display_text_write_line_color_len(filename[selected], MAX_LINE_LENGTH, 0xFFFF, 0x0000);
-			if(selected==0) {
-				selected=num_file-1;
-			} else {
+			display_txt_write_line_color(filename[selected], SELECTOR_TEXT_COLOR, SELECTOR_BG_COLOR);
+			if (selected == 0)
+			{
+				selected = num_file - 1;
+			}
+			else
+			{
 				selected--;
 			}
-			display_text_set_cursor(0, selected * LINE_HEIGHT);
-			display_text_write_line_color_len(filename[selected], MAX_LINE_LENGTH, 0xFFFF, 0xF800);
-			display_flush();
+			display_txt_set_cursor(selected, 0);
+			display_txt_write_line_color(filename[selected], SELECTOR_HIGHLIGHT_COLOR, SELECTOR_BG_COLOR);
 			sleep_ms(SELECTOR_SCROLL_DELAY_MS);
 		}
 		if (controls_is_button_pressed(RIGHT))
 		{
 			/* select the next page */
 			num_page++;
-			num_file = rom_file_selector_display_page(filename,num_page);
-			if(num_file==0) {
+			num_file = rom_file_selector_display_page(filename, num_page);
+			if (num_file == 0)
+			{
 				/* no files in this page, go to the previous page */
 				num_page--;
-				num_file = rom_file_selector_display_page(filename,num_page);
+				num_file = rom_file_selector_display_page(filename, num_page);
 			}
 			/* select the first file */
-			selected=0;
-			display_text_set_cursor(0, selected * LINE_HEIGHT);
-			display_text_write_line_color_len(filename[selected], MAX_LINE_LENGTH, 0xFFFF, 0xF800);
-			display_flush();
+			selected = 0;
+			display_txt_set_cursor(selected, 0);
+			display_txt_write_line_color(filename[selected], SELECTOR_HIGHLIGHT_COLOR, SELECTOR_BG_COLOR);
 			sleep_ms(SELECTOR_SCROLL_DELAY_MS);
 		}
 		if (controls_is_button_pressed(LEFT) && num_page > 0)
@@ -395,15 +434,14 @@ void rom_file_selector()
 			num_file = rom_file_selector_display_page(filename, num_page);
 			/* select the first file */
 			selected = 0;
-			display_text_set_cursor(0, selected * LINE_HEIGHT);
-			display_text_write_line_color_len(filename[selected], MAX_LINE_LENGTH, 0xFFFF, 0xF800);
-			display_flush();
+			display_txt_set_cursor(selected, 0);
+			display_txt_write_line_color(filename[selected], SELECTOR_HIGHLIGHT_COLOR, SELECTOR_BG_COLOR);
 			sleep_ms(SELECTOR_SCROLL_DELAY_MS);
 		}
 
 		tight_loop_contents();
 	}
-}
+};
 
 void update_gb_joypad(struct gb_s *gb)
 {
@@ -512,7 +550,8 @@ bool update_menu_combos(struct gb_s *gb)
 		if (controls_is_button_pressed(UP))
 		{
 			/* select + up: toggle interlace mode */
-			gb->direct.interlace = !gb->direct.interlace;
+			// gb->direct.interlace = !gb->direct.interlace;
+			scalingMode = (scalingMode + 1) % COUNT;
 
 			sleep_ms(MENU_COMBO_DELAY_MS);
 		}
@@ -560,18 +599,205 @@ bool update_menu_combos(struct gb_s *gb)
 	return false;
 }
 
+static uint8_t scaledLineOffsetTable[LCD_HEIGHT]; // scaled to 240 lines
+
+#define IS_REPEATED(pos) ((pos % 2) || (pos % 6 == 0))
+
+static void calcExtraLineTable()
+{
+	uint8_t offset = 0;
+	for (uint8_t line = 0; line < LCD_HEIGHT; ++line)
+	{
+		scaledLineOffsetTable[line] = offset;
+		offset += 1 + IS_REPEATED(line);
+	}
+}
+
+void lcd_write_pixels_normal(const uint16_t *pixels, uint8_t line, uint_fast16_t count)
+{
+	const uint16_t colOffset = (DISPLAY_WIDTH - LCD_WIDTH) / 2;
+	const uint16_t screenLineOffset = (DISPLAY_HEIGHT - LCD_HEIGHT) / 2;
+
+	display_bmp_draw(pixels, colOffset, screenLineOffset + line, LCD_WIDTH, 1);
+}
+
+void lcd_write_pixels_stretched(const uint16_t *pixels, uint8_t line, uint_fast16_t count)
+{
+	static uint16_t doubledPixels[DISPLAY_WIDTH * 2];
+	const uint8_t lineRepeated = IS_REPEATED(line);
+
+	uint16_t pos = 0;
+
+	for (int col = 0; col < count; ++col)
+	{
+		doubledPixels[pos] = pixels[col];
+		if (lineRepeated)
+		{
+			doubledPixels[pos + DISPLAY_WIDTH] = pixels[col];
+		}
+		pos++;
+		doubledPixels[pos] = pixels[col];
+		if (lineRepeated)
+		{
+			doubledPixels[pos + DISPLAY_WIDTH] = pixels[col];
+		}
+		pos++;
+	}
+
+	const uint16_t stretchedWidth = count * 2;
+	const uint16_t lineOffset = scaledLineOffsetTable[line];
+
+	// display_bmp_draw(doubledPixels, 0, lineOffset, stretchedWidth, lineRepeated ? 2 : 1);
+	display_bmp_draw(doubledPixels, 0, lineOffset, stretchedWidth, 1);
+}
+
+void lcd_write_pixels_stretched_keep_aspect(const uint16_t *pixels, uint8_t line, uint_fast16_t count)
+{
+	static uint16_t doubledPixels[DISPLAY_WIDTH];
+	uint16_t pos = 0;
+	for (int col = 0; col < count; ++col)
+	{
+		doubledPixels[pos++] = pixels[col];
+		if (IS_REPEATED(col))
+		{
+			doubledPixels[pos++] = pixels[col];
+		}
+	}
+
+	const uint16_t stretchedWidth = pos;
+
+	const uint16_t colOffset = (DISPLAY_WIDTH - stretchedWidth) / 2;
+
+	const uint8_t lineRepeated = IS_REPEATED(line);
+	const uint16_t lineOffset = scaledLineOffsetTable[line];
+
+	display_bmp_draw(doubledPixels, colOffset, lineOffset, stretchedWidth, 1);
+	if (lineRepeated)
+	{
+		sleep_us(5);
+		display_bmp_draw(doubledPixels, colOffset, lineOffset + 1, stretchedWidth, 1);
+	}
+}
+
+void lcd_write_pixels_interlace_aspect(const uint16_t *pixels, uint8_t line, uint_fast16_t count)
+{
+	static uint16_t newPixels[DISPLAY_WIDTH];
+
+	// uint16_t bg_darkest = palette[2][3] / 2;
+	// memset(newPixels, 0, sizeof(newPixels)); // vynulování bufferu
+
+	uint16_t pos = 0;
+	for (int col = 0; col < count; col++)
+	{
+		newPixels[pos] = pixels[col];
+		pos++;
+
+		if (col % 3 == 0)
+		{
+			newPixels[pos] = pixels[col]; // nebo jiná barva pozadí z palety
+			pos++;
+			// newPixels[pos++] = bg_darkest; // nebo jiná barva pozadí z palety
+		}
+	}
+
+	const uint16_t stretchedWidth = pos - 1;
+	const uint16_t colOffset = (DISPLAY_WIDTH - stretchedWidth) / 2;
+	const uint16_t screenLineOffset = line * 1.5;
+
+	display_bmp_draw(newPixels, colOffset, screenLineOffset, stretchedWidth, 1);
+}
+
+// Writes pixels to screen or framebuffer
+void lcd_write_pixels(const uint16_t *pixels, uint8_t line, uint_fast16_t count)
+{
+	// lcd_write_pixels_normal(pixels, line, count);
+
+	switch (scalingMode)
+	{
+	case STRETCH:
+		lcd_write_pixels_stretched(pixels, line, count);
+		break;
+	case STRETCH_KEEP_ASPECT:
+		lcd_write_pixels_stretched_keep_aspect(pixels, line, count);
+		break;
+	case INTERLACE_KEEP_ASPECT:
+		lcd_write_pixels_interlace_aspect(pixels, line, count);
+		break;
+	case NORMAL:
+	default:
+		lcd_write_pixels_normal(pixels, line, count);
+		break;
+	}
+}
+
+void core1_lcd_draw_line(const uint_fast8_t line)
+{
+	static uint16_t fb[LCD_WIDTH];
+
+	for (unsigned int x = 0; x < LCD_WIDTH; x++)
+	{
+		uint16_t color = palette[(pixels_buffer[x] & LCD_PALETTE_ALL) >> 4][pixels_buffer[x] & 3];
+		fb[x] = color;
+	}
+
+	// display_bmp_draw(fb, 0, line, DISPLAY_WIDTH, 1);
+	lcd_write_pixels(fb, line, LCD_WIDTH);
+	__atomic_store_n(&lcd_line_busy, 0, __ATOMIC_SEQ_CST);
+}
+
+void lcd_draw_line(struct gb_s *gb, const uint8_t pixels[LCD_WIDTH], const uint_fast8_t line)
+{
+	union core_cmd cmd;
+
+	/* Wait until previous line is sent. */
+	while (__atomic_load_n(&lcd_line_busy, __ATOMIC_SEQ_CST))
+		tight_loop_contents();
+
+	memcpy(pixels_buffer, pixels, LCD_WIDTH);
+
+	/* Populate command. */
+	cmd.cmd = CORE_CMD_LCD_LINE;
+	cmd.data = line;
+
+	__atomic_store_n(&lcd_line_busy, 1, __ATOMIC_SEQ_CST);
+	multicore_fifo_push_blocking(cmd.full);
+}
+
+_Noreturn void main_core1(void)
+{
+	union core_cmd cmd;
+
+	display_clear();
+
+	calcExtraLineTable();
+
+	/* Handle commands coming from core0. */
+	while (1)
+	{
+		cmd.full = multicore_fifo_pop_blocking();
+		switch (cmd.cmd)
+		{
+		case CORE_CMD_LCD_LINE:
+			core1_lcd_draw_line(cmd.data);
+			break;
+
+		case CORE_CMD_IDLE_SET:
+			display_clear(); // prozatím jen vyčistí obrazovku, ale ideálně by to mělo přepnout do nějakého úsporného módu, který by omezil barvy a snížil frekvenci aktualizace, aby se ušetřila energie a snížilo zahřívání při dlouhém hraní náročnějších her
+			break;
+
+		case CORE_CMD_NOP:
+		default:
+			break;
+		}
+	}
+
+	HEDLEY_UNREACHABLE();
+}
+
 int main(void)
 {
 	static struct gb_s gb;
 	enum gb_init_error_e ret;
-
-	const unsigned vco = 1596 * 1000 * 1000; /* 266MHz */
-	const unsigned div1 = 6, div2 = 1;
-
-	vreg_set_voltage(VREG_VOLTAGE_1_15);
-	sleep_ms(2);
-	set_sys_clock_pll(vco, div1, div2);
-	sleep_ms(2);
 
 	/* Initialise USB serial connection for debugging. */
 	stdio_init_all();
@@ -600,6 +826,10 @@ int main(void)
 
 		gb_init_lcd(&gb, &lcd_draw_line);
 
+		/* Start Core1, which processes requests to the LCD. */
+		putstdio("CORE1 ");
+		multicore_launch_core1(main_core1);
+
 		display_clear();
 
 		// #if ENABLE_SDCARD
@@ -615,6 +845,8 @@ int main(void)
 			int input;
 
 			gb.gb_frame = 0;
+
+			gb_run_frame(&gb);
 
 			do
 			{

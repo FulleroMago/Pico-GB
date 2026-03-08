@@ -63,7 +63,6 @@ uint dma_tx;
 dma_channel_config dma_cfg;
 void waitForDMA()
 {
-
 	dma_channel_wait_for_finish_blocking(dma_tx);
 }
 #endif

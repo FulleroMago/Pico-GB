@@ -1,24 +1,20 @@
 add_library(morana
-    morana.c
-    display.c
-    sd_card.c
-    controls.c
+    src/morana.c
+    src/display/ili9341.c
+    src/display/display.c
+    src/display/display_bmp.c
+    src/display/display_txt.c
+    src/sd_card.c
+    src/controls.c
 )
 
 target_include_directories(morana PUBLIC
-    .
+    ./src
 )
 
 # # Add any user requested libraries
 target_link_libraries(morana
-    ili9341
-    gfx
     FatFs_SPI
-
-    # no-OS-FatFS-SD-SDIO-SPI-RPi-Pico
 )
 
-add_subdirectory(libs/display/ili9341)
-add_subdirectory(libs/display/gfx)
 add_subdirectory(libs/storage/FatFs_SPI build)
-# add_subdirectory(libs/storage/SD build)
