@@ -19,7 +19,7 @@ void morana_init_all()
     morana_overclock();
 #endif
 
-    display_init(0);
+    display_init();
     controls_init();
     sd_card_init();
 }

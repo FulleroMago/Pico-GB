@@ -1,0 +1,1 @@
+Optimalizavat velikost celého programu pod 1MB

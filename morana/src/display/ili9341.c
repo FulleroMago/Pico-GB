@@ -211,21 +211,16 @@ void lcd_write_bitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t *
 }
 
 void lcd_fill_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color)
-{    
-    puts("lcd_fill_rect start");
+{
     lcd_select();
     lcd_set_window(x, y, w, h);
     lcd_data_mode();
     spi_set_format(TFT_SPI, 16, SPI_CPOL_1, SPI_CPOL_1, SPI_MSB_FIRST);
 
-    puts("lcd_fill_rect sending data");
-
 #if TFT_USE_DMA
     dma_channel_configure(dma_tx, &dma_cfg, &spi_get_hw(ili9341_spi)->dr, &color, w * h, false);
     // dma_channel_wait_for_finish_blocking(dma_tx);
 #endif
-
-    puts("lcd_fill_rect sending data done, filling color buffer");
 
     uint16_t color_buffer[w]; // Buffer for one line of pixels
     for (size_t i = 0; i < w; i++)
@@ -236,15 +231,10 @@ void lcd_fill_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t colo
         spi_write16_blocking(TFT_SPI, color_buffer, w);
     }
 
-    puts("lcd_fill_rect done");
     lcd_deselect();
-
-    puts("lcd_fill_rect deselected");
 }
 
 void lcd_clear_screen(uint16_t color)
 {
-    puts("lcd_clear_screen start");
     lcd_fill_rect(0, 0, _width, _height, color);
-    puts("lcd_clear_screen done");  
 }
