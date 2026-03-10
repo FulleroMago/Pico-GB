@@ -14,14 +14,14 @@
  */
 
 // // Peanut-GB emulator settings
-#define ENABLE_LCD 1
-#define ENABLE_SDCARD 1
-#define PEANUT_GB_HIGH_LCD_ACCURACY 1
-#define PEANUT_GB_USE_BIOS 0
+// #define ENABLE_LCD 1
+// #define ENABLE_SDCARD 1
+// #define PEANUT_GB_HIGH_LCD_ACCURACY 1
+// #define PEANUT_GB_USE_BIOS 0
 
 // /* Use DMA for all drawing to LCD. Benefits aren't fully realised at the moment
 //  * due to busy loops waiting for DMA completion. */
-#define USE_DMA 1
+// #define USE_DMA 1
 
 /* C Headers */
 #include <stdio.h>
@@ -300,8 +300,6 @@ void load_cart_rom_file(char *filename)
 	{
 		printf("E Programming failed!\n");
 	}
-
-	// printf("I load_cart_rom_file(%s) COMPLETE (%lu bytes)\n", filename, state.flash_target_offset - FLASH_TARGET_OFFSET);
 }
 
 /**
@@ -441,7 +439,7 @@ void rom_file_selector()
 
 		tight_loop_contents();
 	}
-};
+}
 
 void update_gb_joypad(struct gb_s *gb)
 {
@@ -799,6 +797,14 @@ int main(void)
 	static struct gb_s gb;
 	enum gb_init_error_e ret;
 
+	const unsigned vco = 1596 * 1000 * 1000; /* 266MHz */
+	const unsigned div1 = 6, div2 = 1;
+
+	vreg_set_voltage(VREG_VOLTAGE_1_15);
+	sleep_ms(2);
+	set_sys_clock_pll(vco, div1, div2);
+	sleep_ms(2);
+
 	/* Initialise USB serial connection for debugging. */
 	stdio_init_all();
 	morana_init_all();
@@ -846,7 +852,7 @@ int main(void)
 
 			gb.gb_frame = 0;
 
-			gb_run_frame(&gb);
+			// gb_run_frame(&gb);
 
 			do
 			{

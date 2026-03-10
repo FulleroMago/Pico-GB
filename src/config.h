@@ -1,7 +1,7 @@
 #pragma once
 
 #define LINE_HEIGHT 10
-#define FILES_PER_PAGE 20
+#define FILES_PER_PAGE 22
 #define SELECTOR_SCROLL_DELAY_MS 200
 #define MENU_COMBO_DELAY_MS 200
 

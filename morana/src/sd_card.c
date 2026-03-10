@@ -369,7 +369,7 @@ uint8_t sd_list_directory_pattern(const char *dirname, const char *pattern, sd_e
 
     // Uložit položky do pole s filtrováním podle vzoru a omezením počtu
     count = 0;
-    while (count < max_entries + 1 && fr == FR_OK && fno.fname[0])
+    while (count < max_entries && fr == FR_OK && fno.fname[0])
     {
         strncpy(entries[count].name, fno.fname, sizeof(entries[count].name) - 1);
         entries[count].name[sizeof(entries[count].name) - 1] = '\0';
