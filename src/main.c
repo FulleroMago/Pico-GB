@@ -797,14 +797,6 @@ int main(void)
 	static struct gb_s gb;
 	enum gb_init_error_e ret;
 
-	const unsigned vco = 1596 * 1000 * 1000; /* 266MHz */
-	const unsigned div1 = 6, div2 = 1;
-
-	vreg_set_voltage(VREG_VOLTAGE_1_15);
-	sleep_ms(2);
-	set_sys_clock_pll(vco, div1, div2);
-	sleep_ms(2);
-
 	/* Initialise USB serial connection for debugging. */
 	stdio_init_all();
 	morana_init_all();
@@ -813,6 +805,8 @@ int main(void)
 	{
 		/* ROM File selector */
 		rom_file_selector();
+
+		display_clear();
 
 		/* Initialise GB context. */
 		memcpy(rom_bank0, rom, sizeof(rom_bank0));
@@ -835,8 +829,6 @@ int main(void)
 		/* Start Core1, which processes requests to the LCD. */
 		putstdio("CORE1 ");
 		multicore_launch_core1(main_core1);
-
-		display_clear();
 
 		// #if ENABLE_SDCARD
 		// 	/* Load Save File. */
