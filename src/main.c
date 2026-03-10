@@ -91,8 +91,12 @@ volatile enum ScalingMode scalingMode = NORMAL;
 //  * Game Boy DMG ROM size ranges from 32768 bytes (e.g. Tetris) to 1,048,576 bytes (e.g. Pokemod Red)
 //  */
 #define FLASH_TARGET_OFFSET (1024 * 1024)
-const uint8_t *rom = (const uint8_t *)(XIP_BASE + FLASH_TARGET_OFFSET);
+
+extern const unsigned char rom[];
 static unsigned char rom_bank0[65536];
+
+// const uint8_t *rom = (const uint8_t *)(XIP_BASE + FLASH_TARGET_OFFSET);
+// static unsigned char rom_bank0[65536];
 
 static uint8_t ram[32768];
 static palette_t palette; // Colour palette
@@ -549,6 +553,7 @@ bool update_menu_combos(struct gb_s *gb)
 		{
 			/* select + up: toggle interlace mode */
 			// gb->direct.interlace = !gb->direct.interlace;
+			lcd_clear_screen(0);
 			scalingMode = (scalingMode + 1) % COUNT;
 
 			sleep_ms(MENU_COMBO_DELAY_MS);
@@ -708,8 +713,6 @@ void lcd_write_pixels_interlace_aspect(const uint16_t *pixels, uint8_t line, uin
 // Writes pixels to screen or framebuffer
 void lcd_write_pixels(const uint16_t *pixels, uint8_t line, uint_fast16_t count)
 {
-	// lcd_write_pixels_normal(pixels, line, count);
-
 	switch (scalingMode)
 	{
 	case STRETCH:
@@ -792,6 +795,36 @@ _Noreturn void main_core1(void)
 	HEDLEY_UNREACHABLE();
 }
 
+void lcd_draw_line_simple(struct gb_s *gb, const uint8_t pixels[LCD_WIDTH], const uint_fast8_t line)
+{
+	static uint16_t fb[LCD_WIDTH];
+
+	for (unsigned int x = 0; x < LCD_WIDTH; x++)
+	{
+		uint16_t color = palette[(pixels[x] & LCD_PALETTE_ALL) >> 4][pixels[x] & 3];
+		fb[x] = color;
+	}
+
+	printf("Drawing line %d\n", line);
+
+	switch (scalingMode)
+	{
+	case STRETCH:
+		lcd_write_pixels_stretched(fb, line, LCD_WIDTH);
+		break;
+	case STRETCH_KEEP_ASPECT:
+		lcd_write_pixels_stretched_keep_aspect(fb, line, LCD_WIDTH);
+		break;
+	case INTERLACE_KEEP_ASPECT:
+		lcd_write_pixels_interlace_aspect(fb, line, LCD_WIDTH);
+		break;
+	case NORMAL:
+	default:
+		lcd_write_pixels_normal(fb, line, LCD_WIDTH);
+		break;
+	}
+}
+
 int main(void)
 {
 	static struct gb_s gb;
@@ -804,9 +837,13 @@ int main(void)
 	while (true)
 	{
 		/* ROM File selector */
-		rom_file_selector();
+		// rom_file_selector();
 
 		display_clear();
+
+		/* Start Core1, which processes requests to the LCD. */
+		// putstdio("CORE1 ");
+		// multicore_launch_core1(main_core1);
 
 		/* Initialise GB context. */
 		memcpy(rom_bank0, rom, sizeof(rom_bank0));
@@ -821,21 +858,18 @@ int main(void)
 		}
 
 		/* Automatically assign a colour palette to the game */
-		char rom_title[16];
+		char rom_title[16] = "Duck Tales (U) [!].gba";
 		auto_assign_palette(palette, gb_colour_hash(&gb), gb_get_rom_name(&gb, rom_title));
 
-		gb_init_lcd(&gb, &lcd_draw_line);
-
-		/* Start Core1, which processes requests to the LCD. */
-		putstdio("CORE1 ");
-		multicore_launch_core1(main_core1);
+		// gb_init_lcd(&gb, &lcd_draw_line);
+		gb_init_lcd(&gb, &lcd_draw_line_simple);
 
 		// #if ENABLE_SDCARD
 		// 	/* Load Save File. */
 		// 	read_cart_ram_file(&gb);
 		// #endif
 
-		gb.direct.frame_skip = true; // zapnutí frame_skip může zlepšit výkon u náročnějších her, ale může způsob
+		// gb.direct.frame_skip = true; // zapnutí frame_skip může zlepšit výkon u náročnějších her, ale může způsob
 		// gb.direct.interlace = true;  // zapnutí interlace módu může zlepšit výkon u náročnějších her, ale může způsobit blikání obrazu. Můžete ho vypnout v menu (select + up) pro stabilnější obraz, ale s možným snížením FPS u náročnějších her.
 
 		while (1)
@@ -843,8 +877,6 @@ int main(void)
 			int input;
 
 			gb.gb_frame = 0;
-
-			// gb_run_frame(&gb);
 
 			do
 			{

@@ -1,4 +1,5 @@
 #include "pico/stdlib.h"
+#include "hardware/dma.h"
 #include "hardware/spi.h"
 #include "hardware/gpio.h"
 #include <stdio.h>
@@ -9,6 +10,15 @@
 uint16_t _width; // Display width as modified by current rotation
 uint16_t _height; // Display height as modified by current rotation
 uint8_t rotation; // Current rotation (0-3)
+
+#ifdef TFT_USE_DMA
+uint dma_tx;
+dma_channel_config dma_cfg;
+void waitForDMA()
+{
+    dma_channel_wait_for_finish_blocking(dma_tx);
+}
+#endif
 
 void lcd_select()
 {
@@ -83,9 +93,22 @@ void lcd_init_spi()
     dma_tx = dma_claim_unused_channel(true);
     dma_cfg = dma_channel_get_default_config(dma_tx);
     channel_config_set_transfer_data_size(&dma_cfg, DMA_SIZE_16);
-    channel_config_set_dreq(&dma_cfg, spi_get_dreq(ili9341_spi, true));
+    channel_config_set_dreq(&dma_cfg, spi_get_dreq(TFT_SPI, true));
+
+    dma_channel_set_irq0_enabled(dma_tx, true);
+    irq_set_exclusive_handler(DMA_IRQ_0, dma_irq_handler);
+    irq_set_enabled(DMA_IRQ_0, true);
 #endif
 
+}
+
+void dma_irq_handler()
+{
+    if (dma_channel_get_irq0_status(dma_tx))
+    {
+        dma_channel_acknowledge_irq0(dma_tx);
+        lcd_deselect();
+    }
 }
 
 void lcd_init()
@@ -202,12 +225,15 @@ void lcd_write_bitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t *
     spi_set_format(TFT_SPI, 16, SPI_CPOL_1, SPI_CPOL_1, SPI_MSB_FIRST);
 
 #if TFT_USE_DMA
-    dma_channel_configure(dma_tx, &dma_cfg, &spi_get_hw(ili9341_spi)->dr, bitmap, w * h, false);
+    if (!dma_channel_is_busy(dma_tx))
+    {
+        dma_channel_configure(dma_tx, &dma_cfg, &spi_get_hw(TFT_SPI)->dr, bitmap, w * h, true);
+    }
     // dma_channel_wait_for_finish_blocking(dma_tx);
-#endif
-
+#else
     spi_write16_blocking(TFT_SPI, bitmap, w * h);
     lcd_deselect();
+#endif
 }
 
 void lcd_fill_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color)
@@ -217,17 +243,16 @@ void lcd_fill_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t colo
     lcd_data_mode();
     spi_set_format(TFT_SPI, 16, SPI_CPOL_1, SPI_CPOL_1, SPI_MSB_FIRST);
 
-#if TFT_USE_DMA
-    dma_channel_configure(dma_tx, &dma_cfg, &spi_get_hw(ili9341_spi)->dr, &color, w * h, false);
-    // dma_channel_wait_for_finish_blocking(dma_tx);
-#endif
-
     uint16_t color_buffer[w]; // Buffer for one line of pixels
     for (size_t i = 0; i < w; i++)
         color_buffer[i] = color;
 
     for (size_t row = 0; row < h; row++)
     {
+        // #if TFT_USE_DMA
+        //         dma_channel_configure(dma_tx, &dma_cfg, &spi_get_hw(TFT_SPI)->dr, &color, w * h, false);
+        //         // dma_channel_wait_for_finish_blocking(dma_tx);
+        // #else
         spi_write16_blocking(TFT_SPI, color_buffer, w);
     }
 

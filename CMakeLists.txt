@@ -46,6 +46,7 @@ add_subdirectory(morana)
 # set(ILI_SRC src/mk_ili9225.c)
 add_executable(RP2040_GB
     src/main.c
+    src/DuckTales.c
 
     # ${ILI_SRC}
     # ext/minigb_apu/minigb_apu.c

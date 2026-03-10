@@ -8,7 +8,7 @@
 #define TFT_DC 17
 #define TFT_RST 20
 #define TFT_CS 21
-#define TFT_USE_DMA 0
+#define TFT_USE_DMA 1
 
 #define TFT_ROTATION 3
 
