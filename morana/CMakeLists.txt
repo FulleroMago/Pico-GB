@@ -4,8 +4,11 @@ add_library(morana
     src/display/display.c
     src/display/display_bmp.c
     src/display/display_txt.c
+    src/display/display_shape.c
     src/sd_card.c
     src/controls.c
+    src/GUI/menu.c
+    src/GUI/menu_item.c
 )
 
 target_include_directories(morana PUBLIC

@@ -27,6 +27,16 @@ void display_init()
     lcd_clear_screen(0x0000);
 }
 
+void display_wait_until_not_busy()
+{
+    lcd_wait_until_not_busy();
+}
+
+bool display_is_busy()
+{
+    return lcd_is_busy();
+}
+
 void display_deinit()
 {
     puts("Deinitializing display...");

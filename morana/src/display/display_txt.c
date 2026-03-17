@@ -52,6 +52,7 @@ void display_txt_put_char(char c, vector2d position, uint16_t color, uint16_t bg
             glyph_ptr = font_glyphs[' '];
         }
 
+        lcd_wait_until_not_busy(); // počkej, dokud není displej připraven pro další příkazy (např. dokončení DMA přenosu)
         for (int i = 0; i < font_glyph_height; i++)
         {
             uint8_t row = glyph_ptr[i];

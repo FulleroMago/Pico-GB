@@ -11,14 +11,23 @@ uint16_t _width; // Display width as modified by current rotation
 uint16_t _height; // Display height as modified by current rotation
 uint8_t rotation; // Current rotation (0-3)
 
-#ifdef TFT_USE_DMA
+#if TFT_USE_DMA
 uint dma_tx;
 dma_channel_config dma_cfg;
-void waitForDMA()
-{
-    dma_channel_wait_for_finish_blocking(dma_tx);
-}
 #endif
+
+void lcd_wait_until_not_busy()
+{
+#if TFT_USE_DMA
+    if (dma_channel_is_busy(dma_tx))
+        dma_channel_wait_for_finish_blocking(dma_tx);
+#endif
+}
+
+bool lcd_is_busy()
+{
+    return gpio_get(TFT_CS) == 0; // Pokud je CS nízké, znamená to, že displej je stále zaneprázdněný přenosem dat
+}
 
 void lcd_select()
 {
@@ -29,6 +38,20 @@ void lcd_deselect()
 {
     gpio_put(TFT_CS, 1);
 }
+
+#if TFT_USE_DMA
+void dma_irq_handler()
+{
+    if (dma_channel_get_irq0_status(dma_tx))
+    {
+        // Krátký delay pro dokončení SPI přenosu
+        sleep_us(4);
+        lcd_deselect();
+
+        dma_channel_acknowledge_irq0(dma_tx);
+    }
+}
+#endif
 
 void lcd_reset()
 {
@@ -72,7 +95,7 @@ void lcd_write_command_with_data(uint8_t cmd, uint8_t *data, uint8_t data_len)
 
 void lcd_init_spi()
 {
-    spi_init(TFT_SPI, 1000 * 40000);
+    spi_init(TFT_SPI, 62500000);
     spi_set_format(TFT_SPI, 16, SPI_CPOL_1, SPI_CPOL_1, SPI_MSB_FIRST);
     gpio_set_function(TFT_SCLK, GPIO_FUNC_SPI);
     gpio_set_function(TFT_MOSI, GPIO_FUNC_SPI);
@@ -96,19 +119,10 @@ void lcd_init_spi()
     channel_config_set_dreq(&dma_cfg, spi_get_dreq(TFT_SPI, true));
 
     dma_channel_set_irq0_enabled(dma_tx, true);
-    irq_set_exclusive_handler(DMA_IRQ_0, dma_irq_handler);
+    irq_add_shared_handler(DMA_IRQ_0, dma_irq_handler, 0);
     irq_set_enabled(DMA_IRQ_0, true);
 #endif
 
-}
-
-void dma_irq_handler()
-{
-    if (dma_channel_get_irq0_status(dma_tx))
-    {
-        dma_channel_acknowledge_irq0(dma_tx);
-        lcd_deselect();
-    }
 }
 
 void lcd_init()
@@ -217,19 +231,26 @@ void lcd_set_window(uint16_t x, uint16_t y, uint16_t w, uint16_t h)
     lcd_write_command(ILI9341_RAMWR);
 }
 
-void lcd_write_bitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t *bitmap)
+void lcd_write_bitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint16_t *bitmap)
 {
+
+#if TFT_USE_DMA
+
+    // Ujisti se, že předchozí DMA přenos skončil
+    // lcd_wait_until_not_busy();
+
+#endif
+
     lcd_select();
     lcd_set_window(x, y, w, h);
     lcd_data_mode();
     spi_set_format(TFT_SPI, 16, SPI_CPOL_1, SPI_CPOL_1, SPI_MSB_FIRST);
 
 #if TFT_USE_DMA
-    if (!dma_channel_is_busy(dma_tx))
-    {
-        dma_channel_configure(dma_tx, &dma_cfg, &spi_get_hw(TFT_SPI)->dr, bitmap, w * h, true);
-    }
+    dma_channel_configure(dma_tx, &dma_cfg, &spi_get_hw(TFT_SPI)->dr, bitmap, w * h, true);
     // dma_channel_wait_for_finish_blocking(dma_tx);
+    // sleep_us(4); // krátký delay pro dokončení SPI přenosu
+    // lcd_deselect();
 #else
     spi_write16_blocking(TFT_SPI, bitmap, w * h);
     lcd_deselect();

@@ -3,9 +3,6 @@
 #define ILI9341_TFTWIDTH 240  // ILI9341 max TFT width
 #define ILI9341_TFTHEIGHT 320 // ILI9341 max TFT height
 
-#define DISPLAY_WIDTH ILI9341_TFTHEIGHT // rotated by 90 degrees
-#define DISPLAY_HEIGHT ILI9341_TFTWIDTH // rotated by 90 degrees
-
 #define ILI9341_MANUFACTURER_ACCESS 0xEF     // Manufacturer Command Access Protect
 #define ILI9341_POWER_CONTROL_B 0xCF         // Power Control B
 #define ILI9341_POWER_ON_SEQ_CONTROL 0xED    // Power On Sequence Control
@@ -46,8 +43,10 @@
 #define MADCTL_MH 0x04  // LCD refresh right to left
 
 void lcd_init();
+bool lcd_is_busy();
 
+void lcd_wait_until_not_busy();
 void lcd_set_rotation(uint8_t m);
-void lcd_write_bitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t *bitmap);
+void lcd_write_bitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint16_t *bitmap);
 void lcd_fill_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color);
 void lcd_clear_screen(uint16_t color);
