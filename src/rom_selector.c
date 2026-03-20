@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include "morana.h"
 #include "GUI/menu.h"
+#include "GUI/gui_common.h"
 #include "config.h"
 #include <string.h>
 
@@ -59,11 +60,11 @@ void load_cart_rom_file(char *filename)
     }
 }
 
-uint8_t load_selected_rom(const menu_item *item, void *user_data)
+key_press_result load_selected_rom(menu_item *item, void *user_data)
 {
     printf("Selected ROM: %s\n", (char *)item->value);
     load_cart_rom_file((char *)item->value);
-    return 1;
+    return KEY_PRESS_EXIT;
 }
 
 void rom_selector_clear_menu_items()
@@ -104,6 +105,7 @@ uint8_t rom_selector_show_page(uint8_t page, void *user_data)
         menu_items[i].text = rom_files[i];
         menu_items[i].value = rom_files[i];
         menu_items[i].action = load_selected_rom;
+        menu_items[i].selectable = true;
     }
 
     return found;

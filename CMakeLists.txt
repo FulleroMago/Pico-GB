@@ -29,35 +29,21 @@ pico_sdk_init()
 
 add_subdirectory(morana)
 
-# # Nastavení proměnné s výchozí hodnotou
-# set(ILI_MODEL "9225") # Vyber display model - hodnoty: "9225" nebo "9341"
-
-# # option(ILI_MODEL " Select ILI display model(9225 or 9341) " "9225")
-
-# # Podle proměnné vyber správný zdrojový soubor
-# if(ILI_MODEL STREQUAL "9225")
-# set(ILI_SRC src/display/mk_ili9225.c)
-# elseif(ILI_MODEL STREQUAL "9341")
-# set(ILI_SRC src/display/mk_ili9341.c)
-# else()
-# message(FATAL_ERROR " Unknown ILI_MODEL: ${ILI_MODEL} ")
-# endif()
-
-# set(ILI_SRC src/mk_ili9225.c)
 add_executable(RP2040_GB
+    src/gbcolors.c
     src/main.c
     src/rom_selector.c
+    src/menu/game_menu.c
+    src/menu/setting_menu.c
+    src/menu/palette_menu.c
+    src/storage.c
+    src/gfx_lcd.c
     src/DuckTales.c
-
-    # ${ILI_SRC}
-    # ext/minigb_apu/minigb_apu.c
-    # ext/i2s/i2s.c
 )
 
 pico_generate_pio_header(RP2040_GB)
 
-target_include_directories(RP2040_GB PRIVATE include ext/minigb_apu ext/i2s)
-
+# target_include_directories(RP2040_GB PRIVATE include ext/minigb_apu ext/i2s)
 target_link_libraries(RP2040_GB
     morana
     pico_stdlib pico_stdio pico_bootrom pico_multicore pico_stdio pico_multicore

@@ -4,9 +4,12 @@
 #include "menu_item.h"
 #include "config.h"
 #include <stddef.h>
+#include "gui_common.h"
+#include "controls.h"
 
 // Callback typ pro načtení položek menu
 typedef uint8_t (*menu_load_items_cb)(uint8_t page, void *user_data);
+typedef key_press_result (*menu_key_press_cb)(pad_button_t button, void *user_data);
 
 typedef struct
 {
@@ -36,7 +39,9 @@ typedef struct
     uint8_t actual_page;
     uint8_t selected;
     menu_load_items_cb load_items; // Callback pro načtení položek menu
+    menu_key_press_cb key_press;   // Callback pro zpracování stisků kláves v menu
     menu_settings settings; // Nastavení zobrazení menu
+    bool exit_menu;         // Flag pro indikaci, zda bylo požadováno opuštění menu (může být nastaveno v callbacku pro zpracování kláves)
 } menu;
 
 void gui_menu_show(menu *m);

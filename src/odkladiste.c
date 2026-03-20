@@ -50,80 +50,7 @@ void lcd_draw_line(struct gb_s *gb, const uint8_t pixels[LCD_WIDTH], const uint_
 	// }
 }
 
-#if ENABLE_SDCARD
-/**
- * Load a save file from the SD card
- */
-void read_cart_ram_file(struct gb_s *gb) {
-char filename[16];
-	uint_fast32_t save_size;
-	UINT br;
-
-	gb_get_rom_name(gb,filename);
-	save_size=gb_get_save_size(gb);
-	if(save_size>0) {
-		sd_card_t *pSD=sd_get_by_num(0);
-		FRESULT fr=f_mount(&pSD->fatfs,pSD->pcName,1);
-		if (FR_OK!=fr) {
-			printf("E f_mount error: %s (%d)\n",FRESULT_str(fr),fr);
-			return;
-		}
-
-		FIL fil;
-		fr=f_open(&fil,filename,FA_READ);
-		if (fr==FR_OK) {
-			f_read(&fil,ram,f_size(&fil),&br);
-		} else {
-			printf("E f_open(%s) error: %s (%d)\n",filename,FRESULT_str(fr),fr);
-		}
-
-		fr=f_close(&fil);
-		if(fr!=FR_OK) {
-			printf("E f_close error: %s (%d)\n", FRESULT_str(fr), fr);
-		}
-		f_unmount(pSD->pcName);
-	}
-	printf("I read_cart_ram_file(%s) COMPLETE (%lu bytes)\n",filename,save_size);
-}
-
-/**
- * Write a save file to the SD card
- */
-void write_cart_ram_file(struct gb_s *gb) {
-	char filename[16];
-	uint_fast32_t save_size;
-	UINT bw;
-
-	gb_get_rom_name(gb,filename);
-	save_size=gb_get_save_size(gb);
-	if(save_size>0) {
-		sd_card_t *pSD=sd_get_by_num(0);
-		FRESULT fr=f_mount(&pSD->fatfs,pSD->pcName,1);
-		if (FR_OK!=fr) {
-			printf("E f_mount error: %s (%d)\n",FRESULT_str(fr),fr);
-			return;
-		}
-
-		FIL fil;
-		fr=f_open(&fil,filename,FA_CREATE_ALWAYS | FA_WRITE);
-		if (fr==FR_OK) {
-			f_write(&fil,ram,save_size,&bw);
-		} else {
-			printf("E f_open(%s) error: %s (%d)\n",filename,FRESULT_str(fr),fr);
-		}
-
-		fr=f_close(&fil);
-		if(fr!=FR_OK) {
-			printf("E f_close error: %s (%d)\n", FRESULT_str(fr), fr);
-		}
-		f_unmount(pSD->pcName);
-	}
-	printf("I write_cart_ram_file(%s) COMPLETE (%lu bytes)\n",filename,save_size);
-}
-
-
 //////////////// LCD CORE 1 ///////////
-
 // Writes pixels to screen or framebuffer
 void lcd_write_pixels(const uint16_t *pixels, uint8_t line, uint_fast16_t count)
 {
@@ -209,11 +136,7 @@ _Noreturn void main_core1(void)
     HEDLEY_UNREACHABLE();
 }
 
-
-
-
 //////////// Menu actions
-
 if (controls_is_button_pressed(RIGHT))
 {
 	if (m->on_next)
@@ -249,4 +172,95 @@ if (controls_is_button_pressed(LEFT) && num_page > 0)
 	display_txt_set_cursor(selected, 0);
 	display_txt_write_line_color(filename[selected], settings->text_select_color, settings->text_bgcolor);
 	sleep_ms(SELECTOR_SCROLL_DELAY_MS);
+}
+
+bool update_menu_combos(struct gb_s *gb)
+{
+	while (controls_is_button_pressed(MENU))
+	{
+		controls_update();
+
+		if (controls_is_button_pressed(RIGHT))
+		{
+			/* select + right: select the next manual color palette */
+			if (manual_palette_selected < 12)
+			{
+				manual_palette_selected++;
+				manual_assign_palette(palette, manual_palette_selected);
+			}
+
+			sleep_ms(MENU_COMBO_DELAY_MS);
+		}
+		if (controls_is_button_pressed(LEFT))
+		{
+			/* select + left: select the previous manual color palette */
+			if (manual_palette_selected > 0)
+			{
+				manual_palette_selected--;
+				manual_assign_palette(palette, manual_palette_selected);
+			}
+
+			sleep_ms(MENU_COMBO_DELAY_MS);
+		}
+		// if (controls_is_button_pressed(X))
+		// {
+		// 	/* select + start: save ram and resets to the game selection menu */
+		// 	write_cart_ram_file(gb);
+		// 	// rom_file_selector();
+		// }
+		// if(controls_is_button_pressed(Y))
+		// {
+		// 	read_cart_ram_file(gb);
+		// }
+		if (controls_is_button_pressed(UP))
+		{
+			/* select + up: toggle interlace mode */
+			// gb->direct.interlace = !gb->direct.interlace;
+			lcd_clear_screen(0);
+			current_scaling_mode = (current_scaling_mode + 1) % COUNT;
+
+			sleep_ms(MENU_COMBO_DELAY_MS);
+		}
+		if (controls_is_button_pressed(DOWN))
+		{
+			/* select + Y: toggle auto-assign palette on/off */
+			if (manual_palette_selected == 0)
+			{
+				manual_palette_selected = 1;
+				manual_assign_palette(palette, manual_palette_selected);
+			}
+			else
+			{
+				manual_palette_selected = 0;
+				auto_assign_palette(palette, gb_colour_hash(gb), NULL);
+			}
+
+			sleep_ms(MENU_COMBO_DELAY_MS);
+		}
+		if (controls_is_button_pressed(A))
+		{
+			/* select + A: toggle frame-skip on/off */
+			gb->direct.frame_skip = !gb->direct.frame_skip;
+
+			sleep_ms(MENU_COMBO_DELAY_MS);
+		}
+		if (controls_is_button_pressed(SELECT))
+		{
+			/* select + start: save ram and resets to the game selection menu */
+			// write_cart_ram_file(&gb);
+			// rom_file_selector();
+
+			// prozatím jen návrat do výběru rom bez uložení, protože zatím není implementováno načítaní uložené pozice z ramky, takže by to stejně nemělo efekt
+			return true;
+		}
+
+		// 	if (!gb.direct.joypad_bits.a && prev_joypad_bits.a)
+		// 	{
+		// 		/* select + A: enable/disable frame-skip => fast-forward */
+		// 		gb.direct.frame_skip = !gb.direct.frame_skip;
+		// 		printf("I gb.direct.frame_skip = %d\n", gb.direct.frame_skip);
+		// 	}
+	}
+
+	return false;
 }

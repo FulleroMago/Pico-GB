@@ -9,7 +9,7 @@
 //  */
 #define FLASH_TARGET_OFFSET (1024 * 1024)
 
-#if DEBUG
+#ifdef DEBUG
 extern const unsigned char rom[];
 #else
 extern const uint8_t *rom;
@@ -20,7 +20,7 @@ extern char rom_title[64];
 static unsigned char rom_bank0[65536];
 static uint8_t ram[32768];
 
-enum ScalingMode
+typedef enum
 {
     NORMAL = 0,
     STRETCH,
@@ -28,4 +28,18 @@ enum ScalingMode
     // INTERLACE,
     // INTERLACE_KEEP_ASPECT,
     COUNT
-};
+} scaling_mode;
+
+typedef struct
+{
+    bool frame_skip;
+    bool interlace;
+    bool auto_assign_palette;
+    uint8_t manual_palette;
+    scaling_mode scaling_mode;
+} settings;
+
+extern settings current_settings;
+extern bool settings_updated;
+extern bool exit_to_selector;
+extern uint8_t fps;

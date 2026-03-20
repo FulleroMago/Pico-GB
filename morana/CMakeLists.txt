@@ -8,7 +8,8 @@ add_library(morana
     src/sd_card.c
     src/controls.c
     src/GUI/menu.c
-    src/GUI/menu_item.c
+
+    # src/GUI/menu_item.c
 )
 
 target_include_directories(morana PUBLIC
